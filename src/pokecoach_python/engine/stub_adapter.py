@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import sys
-from typing import Any
+from typing import Any, Literal
 
 from pokecoach_python.engine.contracts import (
     BattleRecord,
@@ -33,7 +33,7 @@ class StubEngineAdapter(EngineAdapter):
             checkpoint_fingerprint=fp,
             supports_preview=True,
             supports_first_turn=True,
-            supports_full_battle=False,
+            supports_full_battle=True,
             stochastic=True,
             python_version=sys.version.split()[0],
             notes=("stub adapter — configure VGC_BENCH for production engine",),
@@ -122,5 +122,94 @@ class StubEngineAdapter(EngineAdapter):
             payload=payload,
         )
 
+    def _sample_our_lineup(self, seed: int) -> tuple[tuple[int, int, int, int], tuple[int, int]]:
+        digest = hashlib.sha256(f"our-lineup:{seed}".encode()).digest()
+        slots = list(range(6))
+        picked: list[int] = []
+        idx = 0
+        while len(picked) < 4:
+            slot = slots[(digest[idx] + idx) % 6]
+            if slot not in picked:
+                picked.append(slot)
+            idx += 1
+        four = tuple(sorted(picked))  # type: ignore[return-value]
+        lead_a = picked[digest[4] % 4]
+        lead_b = picked[(digest[5] % 3 + 1) % 4]
+        if lead_b == lead_a:
+            lead_b = picked[(picked.index(lead_a) + 1) % 4]
+        our_lead = (lead_a, lead_b) if lead_a < lead_b else (lead_b, lead_a)
+        return four, our_lead
+
+    def _our_turn1_actions(self, seed: int, our_lead: tuple[int, int]) -> list[dict[str, Any]]:
+        digest = hashlib.sha256(f"our-turn1:{seed}".encode()).digest()
+        slot_a, slot_b = our_lead[0], our_lead[1]
+        target_a = digest[1] % 6
+        target_b = digest[2] % 6
+        return [
+            {
+                "kind": "move",
+                "actor": {"side": "ours", "slot": slot_a},
+                "move": "Stub Move A",
+                "targets": [
+                    {"kind": "pokemon", "ref": {"side": "opponent", "slot": target_a}}
+                ],
+            },
+            {
+                "kind": "move",
+                "actor": {"side": "ours", "slot": slot_b},
+                "move": "Stub Move B",
+                "targets": [
+                    {"kind": "pokemon", "ref": {"side": "opponent", "slot": target_b}}
+                ],
+            },
+        ]
+
     def full_battle(self, request: SimulationRequest) -> BattleRecord:
-        raise NotImplementedError("stub engine does not implement full_battle")
+        if request.opponent_lead is None:
+            raise ValueError("opponent_lead required for full_battle")
+        lead = request.opponent_lead
+        if lead[0] == lead[1]:
+            raise ValueError("invalid opponent_lead")
+        digest = hashlib.sha256(f"full-battle:{request.seed}".encode()).digest()
+        if digest[0] == 0:
+            raise ValueError("simulated battle rejection")
+        if digest[1] == 0:
+            return BattleRecord(
+                preview=PreviewRecord(
+                    opponent_lead_slots=lead,
+                    our_lead_slots=None,
+                    meta={"engine": "stub", "technical": True},
+                ),
+                turns=(),
+                outcome="technical",
+                participants={},
+                meta={"engine": "stub"},
+            )
+        our_four, our_lead = self._sample_our_lineup(request.seed)
+        outcome_roll = digest[8] % 10
+        if outcome_roll == 0:
+            outcome: Literal["win", "loss", "draw"] = "draw"
+        elif outcome_roll <= 5:
+            outcome = "win"
+        else:
+            outcome = "loss"
+        our_actions = self._our_turn1_actions(request.seed, our_lead)
+        return BattleRecord(
+            preview=PreviewRecord(
+                opponent_lead_slots=lead,
+                our_lead_slots=our_lead,
+                meta={"engine": "stub"},
+            ),
+            turns=(
+                {
+                    "turn": 1,
+                    "ourActions": our_actions,
+                },
+            ),
+            outcome=outcome,
+            participants={
+                "ourFourSlots": list(our_four),
+                "ourLeadSlots": list(our_lead),
+            },
+            meta={"engine": "stub", "seed": request.seed},
+        )

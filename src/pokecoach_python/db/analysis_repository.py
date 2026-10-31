@@ -14,7 +14,15 @@ from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
 from pokecoach_python.core.config import Settings
+from pokecoach_python.engine.contracts import BattleRecord
 from pokecoach_python.schemas.analysis_result import Phase
+from pokecoach_python.workflow.battle_records import (
+    BATTLE_FORMAT_VERSION,
+    battle_payload_dict,
+    battle_payload_sha256,
+    battle_record_from_payload,
+    validate_terminal_battle,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -425,6 +433,112 @@ class AnalysisRepository:
                 )
                 return updated.rowcount == 1
 
+    def insert_battle(
+        self,
+        run_id: uuid.UUID,
+        token: uuid.UUID,
+        *,
+        phase: Literal["C", "D"],
+        sample_key: str,
+        record: BattleRecord,
+        expected_opponent_lead: tuple[int, int],
+    ) -> uuid.UUID:
+        validate_terminal_battle(record, expected_opponent_lead=expected_opponent_lead)
+        payload = battle_payload_dict(record)
+        digest = battle_payload_sha256(payload)
+        payload_json = json.dumps(payload)
+        with Session(self._engine) as session:
+            with session.begin():
+                lease_ok = session.connection().execute(
+                    text(
+                        """
+                        SELECT 1 FROM core.matchup_runs
+                        WHERE id = :run_id
+                          AND lease_token = :token
+                          AND status = 'running'
+                          AND lease_expires_at > now()
+                        """
+                    ),
+                    {"run_id": run_id, "token": token},
+                ).first()
+                if lease_ok is None:
+                    raise RuntimeError("lost lease before battle insert")
+                existing = session.connection().execute(
+                    text(
+                        """
+                        SELECT sha256, payload
+                        FROM core.matchup_run_battles
+                        WHERE run_id = :run_id
+                          AND phase = :phase
+                          AND sample_key = :sample_key
+                        """
+                    ),
+                    {"run_id": run_id, "phase": phase, "sample_key": sample_key},
+                ).first()
+                if existing is not None:
+                    if existing[0] != digest:
+                        raise RuntimeError("duplicate battle sample_key with different payload")
+                    row_id = session.connection().execute(
+                        text(
+                            """
+                            SELECT id FROM core.matchup_run_battles
+                            WHERE run_id = :run_id AND phase = :phase AND sample_key = :sample_key
+                            """
+                        ),
+                        {"run_id": run_id, "phase": phase, "sample_key": sample_key},
+                    ).scalar_one()
+                    return row_id
+                battle_id = session.connection().execute(
+                    text(
+                        """
+                        INSERT INTO core.matchup_run_battles (
+                          run_id, phase, sample_key, format_version, outcome, payload, sha256
+                        )
+                        VALUES (
+                          :run_id, :phase, :sample_key, :format_version, :outcome,
+                          CAST(:payload AS jsonb), :sha256
+                        )
+                        RETURNING id
+                        """
+                    ),
+                    {
+                        "run_id": run_id,
+                        "phase": phase,
+                        "sample_key": sample_key,
+                        "format_version": BATTLE_FORMAT_VERSION,
+                        "outcome": record.outcome,
+                        "payload": payload_json,
+                        "sha256": digest,
+                    },
+                ).scalar_one()
+        return battle_id
+
+    def list_battles(
+        self,
+        run_id: uuid.UUID,
+        *,
+        phase: Literal["C", "D"],
+    ) -> list[BattleRecord]:
+        with Session(self._engine) as session:
+            rows = session.connection().execute(
+                text(
+                    """
+                    SELECT payload
+                    FROM core.matchup_run_battles
+                    WHERE run_id = :run_id AND phase = :phase
+                    ORDER BY sample_key
+                    """
+                ),
+                {"run_id": run_id, "phase": phase},
+            ).all()
+        records: list[BattleRecord] = []
+        for row in rows:
+            payload = row[0]
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            records.append(battle_record_from_payload(payload))
+        return records
+
     def pause_for_implementation(
         self,
         run_id: uuid.UUID,
@@ -474,7 +588,11 @@ class AnalysisRepository:
         partial_json = json.dumps(partial_result)
         phase_key = partial_result["completedPhases"][-1]
         meta_patch = json.dumps({"phases": {phase_key: execution_slice}})
-        process = "PENDING STATS"
+        process = (
+            "PENDING GAME SIMULATIONS"
+            if phase_key in ("C", "D")
+            else "PENDING STATS"
+        )
         if pause:
             status = "paused"
         else:

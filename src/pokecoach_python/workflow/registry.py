@@ -5,6 +5,7 @@ from __future__ import annotations
 from pokecoach_python.schemas.analysis_result import Phase
 from pokecoach_python.workflow.phases.phase_a import run_phase_a
 from pokecoach_python.workflow.phases.phase_b import run_phase_b
+from pokecoach_python.workflow.phases.phase_c import run_phase_c
 from pokecoach_python.workflow.types import PhaseHandler
 
 _ORDER: tuple[Phase, ...] = ("A", "B", "C", "D", "synthesis")
@@ -12,6 +13,7 @@ _ORDER: tuple[Phase, ...] = ("A", "B", "C", "D", "synthesis")
 _HANDLERS: dict[Phase, PhaseHandler] = {
     "A": run_phase_a,
     "B": run_phase_b,
+    "C": run_phase_c,
 }
 
 

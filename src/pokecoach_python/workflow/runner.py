@@ -48,13 +48,14 @@ def _defer_publish_after_phase(
     output_phase: Phase,
     remaining_phases: list[Phase],
 ) -> bool:
-    """Skip DB publish after A when B runs immediately in the same worker pass."""
-    return (
-        output_phase == "A"
-        and remaining_phases
-        and remaining_phases[0] == "B"
-        and handler_for("B") is not None
-    )
+    """Skip DB publish when the next phase runs immediately in the same worker pass."""
+    if not remaining_phases:
+        return False
+    next_phase = remaining_phases[0]
+    if handler_for(next_phase) is None:
+        return False
+    chain = (("A", "B"), ("B", "C"))
+    return (output_phase, next_phase) in chain
 
 
 class WorkflowRunner:
@@ -110,6 +111,15 @@ class WorkflowRunner:
                     preview_timeout_seconds=float(
                         self._settings.analysis_preview_timeout_seconds
                     ),
+                    insert_battle=lambda rec, key: self._repo.insert_battle(
+                        run_id,
+                        token,
+                        phase="C",
+                        sample_key=key,
+                        record=rec,
+                        expected_opponent_lead=rec.preview.opponent_lead_slots,
+                    ),
+                    list_battles=lambda: self._repo.list_battles(run_id, phase="C"),
                 )
                 output = handler(ctx)
                 if _defer_publish_after_phase(output.phase, remaining):

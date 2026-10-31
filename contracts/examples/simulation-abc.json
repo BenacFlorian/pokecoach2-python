@@ -26,8 +26,10 @@
     },
     "comparisons": [],
     "firstTurns": [],
-    "selectionRuleVersion": "c-v1",
-    "limitations": []
+    "selectionRuleVersion": "selection-v1",
+    "limitations": [
+      "Recommandation empirique (selection-v1) : règle de couverture complète puis taux pondéré par les fréquences A du top étudié."
+    ]
   },
   "refinement": null,
   "gameplan": null,

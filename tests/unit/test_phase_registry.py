@@ -11,4 +11,4 @@ def test_phase_b_handler_registered():
 
 def test_deployed_handlers_filters_missing_implementations():
     handlers = deployed_handlers(["A", "B", "C"])
-    assert set(handlers) == {"A", "B"}
+    assert set(handlers) == {"A", "B", "C"}

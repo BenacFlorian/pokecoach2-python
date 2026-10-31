@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from pokecoach_python.engine.contracts import EngineAdapter, PreviewRecord
+from pokecoach_python.engine.contracts import BattleRecord, EngineAdapter, PreviewRecord
 from pokecoach_python.schemas.analysis_result import Phase, SimulationResultV2
 
 ProgressCallback = Callable[[str, int, int], None]
@@ -29,6 +29,8 @@ class PhaseContext:
     engine: EngineAdapter
     report_progress: ProgressCallback
     preview_timeout_seconds: float = 30.0
+    insert_battle: Callable[[BattleRecord, str], None] | None = None
+    list_battles: Callable[[], Sequence[BattleRecord]] | None = None
 
 
 @dataclass(frozen=True)
