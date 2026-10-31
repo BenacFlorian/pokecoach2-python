@@ -1,4 +1,4 @@
-"""Start analysis commands (minimal socle before worker phases)."""
+"""Start, continue and cancel analysis commands."""
 
 from __future__ import annotations
 
@@ -14,17 +14,20 @@ from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlmodel import Session
 
 from pokecoach_python.core.config import Settings
+from pokecoach_python.db.analysis_repository import AnalysisRepository
+from pokecoach_python.engine.factory import build_engine_adapter
 from pokecoach_python.schemas.analysis_commands import (
+    AnalysisCancelResponse,
     AnalysisCapabilitiesResponse,
+    AnalysisContinueRequest,
+    AnalysisContinueResponse,
     AnalysisStartRequest,
     AnalysisStartResponse,
 )
-from pokecoach_python.schemas.analysis_result import empty_envelope
 
 logger = logging.getLogger(__name__)
 
 _DEPLOYED_PROFILES = ("standard", "smoke")
-_IDEMPOTENCY: dict[uuid.UUID, tuple[str, AnalysisStartResponse]] = {}
 
 
 @dataclass(frozen=True)
@@ -32,6 +35,11 @@ class _MatchupRow:
     id: uuid.UUID
     regulation: str | None
     is_deleted: bool
+
+
+def _repo(session: Session, settings: Settings) -> AnalysisRepository:
+    engine = session.get_bind()
+    return AnalysisRepository(engine, settings)
 
 
 def analysis_capabilities(settings: Settings) -> AnalysisCapabilitiesResponse:
@@ -45,6 +53,23 @@ def analysis_capabilities(settings: Settings) -> AnalysisCapabilitiesResponse:
                 "message": "Configuration d’analyse indisponible.",
             },
         )
+    engine = build_engine_adapter(settings)
+    try:
+        engine.preflight(
+            {"regulation": regulations[0], "checkpoint_id": settings.analysis_checkpoint_id},
+            ({}, {}),
+        )
+    except Exception as exc:
+        logger.error("engine preflight failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "ENGINE_UNAVAILABLE",
+                "message": "Moteur de simulation indisponible.",
+            },
+        ) from exc
+    finally:
+        engine.close()
     return AnalysisCapabilitiesResponse(
         phases=phases,
         profiles=list(_DEPLOYED_PROFILES),
@@ -59,6 +84,15 @@ def _request_fingerprint(matchup_id: uuid.UUID, body: AnalysisStartRequest) -> s
         "profile": body.profile,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+def _continue_fingerprint(run_id: uuid.UUID, body: AnalysisContinueRequest) -> str:
+    payload = {"runId": str(run_id), "targetPhase": body.target_phase}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+def _cancel_fingerprint(run_id: uuid.UUID) -> str:
+    return hashlib.sha256(json.dumps({"runId": str(run_id)}).encode()).hexdigest()
 
 
 def _load_matchup(session: Session, matchup_id: uuid.UUID) -> _MatchupRow:
@@ -94,22 +128,6 @@ def _validate_start_request(
                 "message": "Ce matchup est archivé.",
             },
         )
-    if not matchup.regulation or not matchup.regulation.strip():
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "code": "REGULATION_REQUIRED",
-                "message": "Renseignez le format avant de lancer l’analyse.",
-            },
-        )
-    if matchup.regulation not in settings.analysis_regulation_list():
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "code": "REGULATION_UNSUPPORTED",
-                "message": "Format non pris en charge pour l’analyse.",
-            },
-        )
     if body.profile not in _DEPLOYED_PROFILES:
         raise HTTPException(
             status_code=422,
@@ -141,42 +159,76 @@ def _active_run_exists(session: Session, matchup_id: uuid.UUID) -> bool:
     return result.first() is not None
 
 
-def _insert_queued_run(
+def _http_status_for_run(status: str) -> int:
+    return 202 if status in ("queued", "running") else 200
+
+
+def _response_from_repo(repo: AnalysisRepository, run_id: uuid.UUID) -> AnalysisStartResponse:
+    payload = repo.load_run_response(run_id)
+    return AnalysisStartResponse.model_validate(payload)
+
+
+def start_analysis(
     session: Session,
+    settings: Settings,
+    *,
     matchup_id: uuid.UUID,
-    target_phase: str,
-) -> AnalysisStartResponse:
-    empty = json.dumps(empty_envelope())
-    try:
-        with session.begin():
-            inserted = session.connection().execute(
-                text(
-                    """
-                    INSERT INTO core.matchup_runs (
-                      matchup_id,
-                      source,
-                      status,
-                      report_version,
-                      target_phase,
-                      partial_result
-                    )
-                    VALUES (
-                      :matchup_id,
-                      'simulation',
-                      'queued',
-                      2,
-                      :target_phase,
-                      CAST(:partial_result AS jsonb)
-                    )
-                    RETURNING id, status, process_status::text
-                    """
-                ),
-                {
-                    "matchup_id": matchup_id,
-                    "target_phase": target_phase,
-                    "partial_result": empty,
+    idempotency_key: uuid.UUID,
+    body: AnalysisStartRequest,
+) -> tuple[AnalysisStartResponse, int]:
+    repo = _repo(session, settings)
+    fingerprint = _request_fingerprint(matchup_id, body)
+    existing = repo.find_command(idempotency_key)
+    if existing is not None:
+        if existing.request_hash != fingerprint:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "IDEMPOTENCY_CONFLICT",
+                    "message": "Clé d’idempotence déjà utilisée pour une autre demande.",
                 },
-            ).one()
+            )
+        response = _response_from_repo(repo, existing.run_id)
+        if response.matchup_id != str(matchup_id):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "IDEMPOTENCY_MISMATCH",
+                    "message": "Cette clé correspond à un autre matchup.",
+                },
+            )
+        return response, _http_status_for_run(response.status)
+
+    matchup = _load_matchup(session, matchup_id)
+    try:
+        repo.apply_matchup_regulation(matchup_id, settings.analysis_regulation_default())
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "MATCHUP_NOT_FOUND", "message": "Matchup introuvable."},
+        ) from exc
+    matchup = _load_matchup(session, matchup_id)
+    _validate_start_request(settings, matchup, body)
+
+    if _active_run_exists(session, matchup_id):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "RUN_ALREADY_ACTIVE",
+                "message": "Une analyse est déjà en cours pour ce matchup.",
+            },
+        )
+
+    seed = str(uuid.uuid4())
+    try:
+        run_id = repo.record_start_command(
+            idempotency_key=idempotency_key,
+            request_hash=fingerprint,
+            matchup_id=matchup_id,
+            target_phase=body.target_phase,  # type: ignore[arg-type]
+            profile=body.profile,
+            seed=seed,
+        )
     except DBAPIError as exc:
         logger.error("analysis start insert failed: %s", type(exc).__name__)
         raise HTTPException(
@@ -192,60 +244,76 @@ def _insert_queued_run(
             detail={"code": "DATABASE_UNAVAILABLE", "message": "Base indisponible."},
         ) from exc
 
-    run_id, status, process_status = inserted
-    normalized_process = str(process_status).replace(" ", "_")
-    return AnalysisStartResponse(
-        matchup_id=str(matchup_id),
-        run_id=str(run_id),
-        source="simulation",
-        status=status,
-        process_status=normalized_process,
-    )
+    response = _response_from_repo(repo, run_id)
+    return response, 202
 
 
-def start_analysis(
+def continue_analysis(
     session: Session,
     settings: Settings,
     *,
-    matchup_id: uuid.UUID,
+    run_id: uuid.UUID,
     idempotency_key: uuid.UUID,
-    body: AnalysisStartRequest,
-) -> tuple[AnalysisStartResponse, int]:
-    fingerprint = _request_fingerprint(matchup_id, body)
-    cached = _IDEMPOTENCY.get(idempotency_key)
-    if cached is not None:
-        prev_fp, response = cached
-        if prev_fp != fingerprint:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "IDEMPOTENCY_CONFLICT",
-                    "message": "Clé d’idempotence déjà utilisée pour une autre demande.",
-                },
-            )
-        if response.matchup_id != str(matchup_id):
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "IDEMPOTENCY_MISMATCH",
-                    "message": "Cette clé correspond à un autre matchup.",
-                },
-            )
-        http_status = 200 if response.status not in ("queued", "running") else 202
-        return response, http_status
+    body: AnalysisContinueRequest,
+) -> tuple[AnalysisContinueResponse, int]:
+    repo = _repo(session, settings)
+    fingerprint = _continue_fingerprint(run_id, body)
+    existing = repo.find_command(idempotency_key)
+    if existing is not None:
+        if existing.request_hash != fingerprint or existing.run_id != run_id:
+            raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_CONFLICT"})
+        response = AnalysisContinueResponse.model_validate(repo.load_run_response(run_id))
+        return response, _http_status_for_run(response.status)
 
-    matchup = _load_matchup(session, matchup_id)
-    _validate_start_request(settings, matchup, body)
-
-    if _active_run_exists(session, matchup_id):
+    if body.target_phase not in settings.analysis_deployed_phase_list():
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "PHASE_NOT_DEPLOYED", "message": "Phase cible non disponible."},
+        )
+    try:
+        repo.record_continue_command(
+            idempotency_key=idempotency_key,
+            request_hash=fingerprint,
+            run_id=run_id,
+            target_phase=body.target_phase,  # type: ignore[arg-type]
+        )
+    except ValueError as exc:
         raise HTTPException(
             status_code=409,
-            detail={
-                "code": "RUN_ALREADY_ACTIVE",
-                "message": "Une analyse est déjà en cours pour ce matchup.",
-            },
-        )
+            detail={"code": "CONTINUE_REJECTED", "message": str(exc)},
+        ) from exc
+    except SQLAlchemyError as exc:
+        raise HTTPException(status_code=503, detail={"code": "DATABASE_UNAVAILABLE"}) from exc
 
-    response = _insert_queued_run(session, matchup_id, body.target_phase)
-    _IDEMPOTENCY[idempotency_key] = (fingerprint, response)
+    response = AnalysisContinueResponse.model_validate(repo.load_run_response(run_id))
     return response, 202
+
+
+def cancel_analysis(
+    session: Session,
+    settings: Settings,
+    *,
+    run_id: uuid.UUID,
+    idempotency_key: uuid.UUID,
+) -> AnalysisCancelResponse:
+    repo = _repo(session, settings)
+    fingerprint = _cancel_fingerprint(run_id)
+    existing = repo.find_command(idempotency_key)
+    if existing is not None:
+        if existing.request_hash != fingerprint or existing.run_id != run_id:
+            raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_CONFLICT"})
+        return AnalysisCancelResponse.model_validate(repo.load_run_response(run_id))
+    try:
+        repo.record_cancel_command(
+            idempotency_key=idempotency_key,
+            request_hash=fingerprint,
+            run_id=run_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "CANCEL_REJECTED", "message": str(exc)},
+        ) from exc
+    except SQLAlchemyError as exc:
+        raise HTTPException(status_code=503, detail={"code": "DATABASE_UNAVAILABLE"}) from exc
+    return AnalysisCancelResponse.model_validate(repo.load_run_response(run_id))

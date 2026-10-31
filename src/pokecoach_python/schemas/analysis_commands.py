@@ -26,3 +26,17 @@ class AnalysisStartResponse(BaseModel):
     process_status: str = Field(alias="processStatus")
 
     model_config = {"populate_by_name": True, "serialize_by_alias": True}
+
+
+class AnalysisContinueRequest(BaseModel):
+    target_phase: str = Field(alias="targetPhase")
+
+    model_config = {"populate_by_name": True}
+
+
+class AnalysisContinueResponse(AnalysisStartResponse):
+    pass
+
+
+class AnalysisCancelResponse(AnalysisStartResponse):
+    pass

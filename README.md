@@ -40,6 +40,20 @@ curl --fail-with-body -X POST http://127.0.0.1:8042/api-python/demo/seed \
 
 Ne pas relancer automatiquement en cas de doute réseau après un commit réussi : relire via GraphQL.
 
+## Workflow d’analyse (socle + phase A)
+
+Variables utiles (voir `.env.example`) : `ANALYSIS_DEPLOYED_PHASES=A`, `POKECOACH_ENGINE=stub` (défaut) ou `vgc_bench`, `ANALYSIS_REGULATIONS`.
+
+```bash
+devbox run start          # API :8042
+devbox run worker         # consomme les runs queued
+devbox run engine-check   # smoke moteur / preview
+```
+
+Commandes HTTP : `GET /api-python/analysis-capabilities`, `POST …/matchups/{id}/analyses`, `POST …/analyses/{run_id}/continue|cancel` (header `Idempotency-Key`).
+
+Recettes : [docs/recettes/analyses-progressives.md](docs/recettes/analyses-progressives.md) et [phase-a.md](docs/recettes/phase-a.md).
+
 ## Tests
 
 ```bash

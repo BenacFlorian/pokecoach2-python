@@ -23,15 +23,31 @@ class Settings(BaseSettings):
     enable_demo_seed: bool = Field(alias="ENABLE_DEMO_SEED", default=False)
     analysis_regulations: str = Field(
         alias="ANALYSIS_REGULATIONS",
-        default="regulation-g",
+        default="M-B",
     )
     analysis_deployed_phases: str = Field(
         alias="ANALYSIS_DEPLOYED_PHASES",
-        default="A",
+        default="A,B,C,D,synthesis",
     )
+    analysis_checkpoint_id: str = Field(
+        alias="ANALYSIS_CHECKPOINT_ID",
+        default="stub-bc-v1",
+    )
+    analysis_preview_timeout_seconds: float = Field(
+        alias="ANALYSIS_PREVIEW_TIMEOUT_SECONDS",
+        default=30.0,
+    )
+    engine_mode: str = Field(alias="POKECOACH_ENGINE", default="stub")
+    vgc_bench_root: str | None = Field(alias="VGC_BENCH_ROOT", default=None)
 
     def analysis_regulation_list(self) -> list[str]:
         return [part.strip() for part in self.analysis_regulations.split(",") if part.strip()]
+
+    def analysis_regulation_default(self) -> str:
+        values = self.analysis_regulation_list()
+        if not values:
+            raise ValueError("ANALYSIS_REGULATIONS must not be empty")
+        return values[0]
 
     def analysis_deployed_phase_list(self) -> list[str]:
         return [
