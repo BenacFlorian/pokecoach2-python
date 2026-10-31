@@ -10,11 +10,36 @@
         "slots": [0, 1],
         "count": 42,
         "turn1": {
-          "sampleSize": 42,
-          "jointActions": [],
-          "backPairs": [],
-          "backSlotMarginals": [],
-          "endStateNotes": []
+          "sampleSize": 50,
+          "jointActions": [
+            {
+              "value": [
+                {
+                  "kind": "move",
+                  "actor": { "side": "opponent", "slot": 0 },
+                  "move": "Hyper Voice",
+                  "targets": [{ "kind": "pokemon", "ref": { "side": "ours", "slot": 0 } }]
+                },
+                {
+                  "kind": "move",
+                  "actor": { "side": "opponent", "slot": 1 },
+                  "move": "Kowtow Cleave",
+                  "targets": [{ "kind": "pokemon", "ref": { "side": "ours", "slot": 2 } }]
+                }
+              ],
+              "count": 22,
+              "sampleSize": 50
+            }
+          ],
+          "backPairs": [
+            { "value": [2, 3], "count": 11, "sampleSize": 50 },
+            { "value": [2, 4], "count": 9, "sampleSize": 50 }
+          ],
+          "backSlotMarginals": [
+            { "value": 2, "count": 32, "sampleSize": 100 },
+            { "value": 3, "count": 11, "sampleSize": 100 }
+          ],
+          "endStateNotes": ["Pression stub après tour 1."]
         }
       }
     ]

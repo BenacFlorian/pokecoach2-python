@@ -5,7 +5,10 @@ def test_phase_order():
     assert phase_order()[0] == "A"
 
 
-def test_only_phase_a_deployed():
-    handlers = deployed_handlers(["A", "B"])
-    assert set(handlers) == {"A"}
-    assert handler_for("B") is None
+def test_phase_b_handler_registered():
+    assert handler_for("B") is not None
+
+
+def test_deployed_handlers_filters_missing_implementations():
+    handlers = deployed_handlers(["A", "B", "C"])
+    assert set(handlers) == {"A", "B"}

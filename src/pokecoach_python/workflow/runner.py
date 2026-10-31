@@ -30,6 +30,33 @@ def _parse_seed(parameters: dict) -> int:
         return abs(hash(str(raw))) % (2**31)
 
 
+def _should_pause_after_phase(
+    output_phase: Phase,
+    target_phase: Phase,
+    remaining_phases: list[Phase],
+) -> bool:
+    order = list(phase_order())
+    out_idx = order.index(output_phase)
+    target_idx = order.index(target_phase)
+    if remaining_phases and handler_for(remaining_phases[0]) is not None:
+        if out_idx < target_idx:
+            return False
+    return out_idx >= target_idx
+
+
+def _defer_publish_after_phase(
+    output_phase: Phase,
+    remaining_phases: list[Phase],
+) -> bool:
+    """Skip DB publish after A when B runs immediately in the same worker pass."""
+    return (
+        output_phase == "A"
+        and remaining_phases
+        and remaining_phases[0] == "B"
+        and handler_for("B") is not None
+    )
+
+
 class WorkflowRunner:
     def __init__(self, repo: AnalysisRepository, settings) -> None:
         self._repo = repo
@@ -47,6 +74,7 @@ class WorkflowRunner:
                 return
             profile = str(row.parameters.get("profile", "standard"))
             seed = _parse_seed(row.parameters)
+            accumulated_partial = dict(row.partial_result)
 
             def progress(phase: str, done: int, total: int) -> None:
                 if not self._repo.update_progress(
@@ -56,8 +84,9 @@ class WorkflowRunner:
                 if self._repo.is_cancelled(run_id):
                     raise RuntimeError("run cancelled")
 
-            for phase in pending:
-                completed = list(row.partial_result.get("completedPhases") or [])
+            for index, phase in enumerate(pending):
+                completed = list(accumulated_partial.get("completedPhases") or [])
+                remaining = pending[index + 1 :]
                 handler = handler_for(phase)
                 if handler is None:
                     if not completed:
@@ -74,7 +103,7 @@ class WorkflowRunner:
                     seed=seed,
                     our_snapshot=row.our_snapshot,
                     opponent_snapshot=row.opponent_snapshot,
-                    partial_result=dict(row.partial_result),
+                    partial_result=accumulated_partial,
                     parameters=dict(row.parameters),
                     engine=engine,
                     report_progress=progress,
@@ -83,8 +112,10 @@ class WorkflowRunner:
                     ),
                 )
                 output = handler(ctx)
-                order = list(phase_order())
-                pause = order.index(output.phase) >= order.index(row.target_phase)
+                if _defer_publish_after_phase(output.phase, remaining):
+                    accumulated_partial = output.result.model_dump(mode="json")
+                    continue
+                pause = _should_pause_after_phase(output.phase, row.target_phase, remaining)
                 payload = output.result.model_dump(mode="json")
                 self._repo.publish_phase(
                     run_id,
@@ -95,6 +126,7 @@ class WorkflowRunner:
                     execution_slice=output.execution_slice,
                     pause=pause,
                 )
+                accumulated_partial = payload
                 row = self._repo.load_run_row(run_id)
                 if row is None:
                     raise RuntimeError("run missing after publish")
