@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 
-from pokecoach_python.db.analysis_repository import AnalysisRepository, ClaimedRun
+from pokecoach_python.db.analysis_repository import AnalysisRepository, ClaimedRun, _initial_provenance
+from pokecoach_python.engine.contracts import BattleRecord
 from pokecoach_python.engine.factory import build_engine_adapter
+from pokecoach_python.engine.provenance import assert_run_engine_compatible
 from pokecoach_python.schemas.analysis_result import Phase
 from pokecoach_python.workflow.registry import handler_for, phase_order
 from pokecoach_python.workflow.types import PhaseContext
@@ -24,10 +27,14 @@ def _phases_to_run(completed: list[str], target: Phase) -> list[Phase]:
 
 def _parse_seed(parameters: dict) -> int:
     raw = parameters.get("seed", "0")
+    text = str(raw)
     try:
-        return int(str(raw), 16) if len(str(raw)) > 8 else int(str(raw))
+        if len(text) > 8:
+            return int(text, 16) % (2**31)
+        return int(text) % (2**31)
     except ValueError:
-        return abs(hash(str(raw))) % (2**31)
+        digest = hashlib.sha256(text.encode()).digest()
+        return int.from_bytes(digest[:4], "big") % (2**31)
 
 
 def _should_pause_after_phase(
@@ -67,6 +74,7 @@ class WorkflowRunner:
         row = claim.context_row
         run_id = row.id
         token = claim.lease_token
+        assert_run_engine_compatible(row.provenance, _initial_provenance(self._settings))
         engine = build_engine_adapter(self._settings)
         try:
             completed = list(row.partial_result.get("completedPhases") or [])

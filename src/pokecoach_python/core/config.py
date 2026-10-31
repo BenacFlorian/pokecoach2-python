@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
@@ -39,6 +41,35 @@ class Settings(BaseSettings):
     )
     engine_mode: str = Field(alias="POKECOACH_ENGINE", default="stub")
     vgc_bench_root: str | None = Field(alias="VGC_BENCH_ROOT", default=None)
+    vgc_bridge_python: str | None = Field(alias="VGC_BRIDGE_PYTHON", default=None)
+    vgc_bridge_manifest_path: str | None = Field(alias="VGC_BRIDGE_MANIFEST", default=None)
+    vgc_checkpoint_path: str | None = Field(alias="VGC_CHECKPOINT_PATH", default=None)
+    vgc_checkpoint_sha256: str | None = Field(alias="VGC_CHECKPOINT_SHA256", default=None)
+    showdown_server_url: str = Field(
+        alias="SHOWDOWN_SERVER_URL",
+        default="ws://127.0.0.1:8090/showdown/websocket",
+    )
+    engine_startup_timeout_seconds: float = Field(
+        alias="ENGINE_STARTUP_TIMEOUT_SECONDS",
+        default=120.0,
+    )
+    engine_preflight_timeout_seconds: float = Field(
+        alias="ENGINE_PREFLIGHT_TIMEOUT_SECONDS",
+        default=60.0,
+    )
+    engine_first_turn_timeout_seconds: float = Field(
+        alias="ENGINE_FIRST_TURN_TIMEOUT_SECONDS",
+        default=120.0,
+    )
+    engine_full_battle_timeout_seconds: float = Field(
+        alias="ENGINE_FULL_BATTLE_TIMEOUT_SECONDS",
+        default=300.0,
+    )
+    engine_max_reject_previews: int = Field(alias="ENGINE_MAX_REJECT_PREVIEWS", default=500)
+    regulation_showdown_map: str = Field(
+        alias="REGULATION_SHOWDOWN_MAP",
+        default='{"M-B":"gen9vgc2024regf"}',
+    )
 
     def analysis_regulation_list(self) -> list[str]:
         return [part.strip() for part in self.analysis_regulations.split(",") if part.strip()]
@@ -55,6 +86,42 @@ class Settings(BaseSettings):
             for part in self.analysis_deployed_phases.split(",")
             if part.strip()
         ]
+
+    def regulation_showdown_map_json(self) -> str:
+        return self.regulation_showdown_map
+
+    def regulation_to_showdown_format(self, regulation: str) -> str:
+        try:
+            mapping = json.loads(self.regulation_showdown_map)
+        except json.JSONDecodeError as exc:
+            raise ValueError("REGULATION_SHOWDOWN_MAP must be valid JSON") from exc
+        if not isinstance(mapping, dict):
+            raise ValueError("REGULATION_SHOWDOWN_MAP must be a JSON object")
+        fmt = mapping.get(regulation)
+        if not isinstance(fmt, str) or not fmt:
+            raise ValueError(f"no Showdown format mapped for regulation {regulation!r}")
+        return fmt
+
+    def default_bridge_manifest_path(self) -> str:
+        if self.vgc_bridge_manifest_path:
+            return self.vgc_bridge_manifest_path
+        root = Path(__file__).resolve().parents[3]
+        return str(root / "engine-runtime" / "manifest.json")
+
+    def resolved_vgc_bridge_python(self) -> str:
+        if self.vgc_bridge_python:
+            return self.vgc_bridge_python
+        root = Path(__file__).resolve().parents[3]
+        candidate = root / "engine-runtime" / ".venv" / "bin" / "python"
+        if candidate.is_file():
+            return str(candidate)
+        import sys
+
+        return sys.executable
+
+    @property
+    def vgc_bridge_argv(self) -> list[str] | None:
+        return None
 
     @field_validator("postgres_port")
     @classmethod

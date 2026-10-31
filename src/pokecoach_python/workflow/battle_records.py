@@ -119,3 +119,32 @@ def sample_key_for_lead(lead_slots: tuple[int, int], valid_index: int) -> str:
 
 def sample_key_for_refinement(valid_index: int) -> str:
     return f"refinement:{valid_index:04d}"
+
+
+def validate_real_engine_battle(
+    record: BattleRecord,
+    *,
+    expected_engine: str,
+) -> None:
+    """Stricter checks for vgc_bench persisted battles (plan 04b task 5)."""
+    validate_terminal_battle(
+        record,
+        expected_opponent_lead=record.preview.opponent_lead_slots,
+    )
+    meta = record.meta or {}
+    engine = meta.get("engine")
+    if engine in (None, "stub"):
+        raise ValueError("real battle requires non-stub engine meta")
+    if expected_engine and engine != expected_engine and engine != "vgc-bench":
+        if expected_engine == "fixture-bridge" and engine == "fixture-bridge":
+            pass
+        elif engine != expected_engine:
+            raise ValueError("engine meta mismatch")
+    if not meta.get("terminalEvidence"):
+        raise ValueError("real battle requires terminalEvidence")
+    turn_numbers = [t.get("turn") for t in record.turns if isinstance(t, dict)]
+    if turn_numbers and turn_numbers[0] != 1:
+        raise ValueError("first stored turn must be turn 1")
+    first = record.turns[0] if record.turns else {}
+    if isinstance(first, dict) and "ourActions" not in first:
+        raise ValueError("turn 1 requires ourActions for aggregators")

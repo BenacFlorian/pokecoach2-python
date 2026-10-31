@@ -82,3 +82,6 @@ class EngineAdapter:
 
     def close(self) -> None:
         return None
+
+    def hello(self) -> dict[str, Any]:
+        return {"engine": "stub", "checkpointLoaded": False}

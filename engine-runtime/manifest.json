@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "vgcBenchGit": "https://github.com/cameronangliss/vgc-bench",
+  "vgcBenchCommit": "d79f9532947ac114dce1dda2456a590afcd375b2",
+  "pokeEnvFork": "see vgc-bench pyproject.toml at pinned commit",
+  "showdownSubmodule": "see vgc-bench submodule at pinned commit",
+  "checkpoint": {
+    "id": "bc-policy-v1",
+    "pathEnv": "VGC_CHECKPOINT_PATH",
+    "sha256Env": "VGC_CHECKPOINT_SHA256",
+    "notes": "Télécharger les poids BC amont ; ne pas entraîner dans PokeCoach."
+  },
+  "normalizerVersion": 1,
+  "traceVersion": 1,
+  "bridgeModes": ["hello", "preflight", "preview", "first_turn", "full_battle", "shutdown"]
+}

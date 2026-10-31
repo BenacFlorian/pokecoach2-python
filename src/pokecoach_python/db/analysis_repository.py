@@ -15,6 +15,7 @@ from sqlmodel import Session
 
 from pokecoach_python.core.config import Settings
 from pokecoach_python.engine.contracts import BattleRecord
+from pokecoach_python.engine.factory import build_engine_adapter
 from pokecoach_python.schemas.analysis_result import Phase
 from pokecoach_python.workflow.battle_records import (
     BATTLE_FORMAT_VERSION,
@@ -28,6 +29,27 @@ logger = logging.getLogger(__name__)
 
 Operation = Literal["start", "continue", "cancel"]
 LEASE_SECONDS = 60
+
+
+def _initial_provenance(settings: Settings) -> dict[str, Any]:
+    from pokecoach_python.engine.provenance import build_run_provenance
+
+    hello: dict[str, Any] | None = None
+    if settings.engine_mode.lower() == "vgc_bench":
+        try:
+            engine = build_engine_adapter(settings)
+            try:
+                hello = engine.hello()  # type: ignore[attr-defined]
+            finally:
+                engine.close()
+        except Exception:
+            hello = None
+    return build_run_provenance(
+        engine_mode=settings.engine_mode,
+        product_phases=settings.analysis_deployed_phase_list(),
+        hello=hello,
+        checkpoint_id=settings.analysis_checkpoint_id,
+    )
 
 
 @dataclass(frozen=True)
@@ -50,6 +72,7 @@ class RunRow:
     our_snapshot: dict[str, Any]
     opponent_snapshot: dict[str, Any]
     process_status: str
+    provenance: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -157,10 +180,7 @@ class AnalysisRepository:
             }
         )
         provenance = json.dumps(
-            {
-                "productPhases": self._settings.analysis_deployed_phase_list(),
-                "engineMode": self._settings.engine_mode,
-            }
+            _initial_provenance(self._settings),
         )
         with Session(self._engine) as session:
             with session.begin():
@@ -710,7 +730,8 @@ class AnalysisRepository:
                            m.regulation,
                            r.our_team_snapshot,
                            r.opponent_team_snapshot,
-                           r.process_status::text
+                           r.process_status::text,
+                           r.provenance
                     FROM core.matchup_runs r
                     JOIN core.matchups m ON m.id = r.matchup_id
                     WHERE r.id = :run_id
@@ -732,4 +753,5 @@ class AnalysisRepository:
                 our_snapshot=row[8],
                 opponent_snapshot=row[9],
                 process_status=row[10],
+                provenance=dict(row[11] or {}),
             )

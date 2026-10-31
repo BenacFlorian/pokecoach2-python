@@ -11,7 +11,8 @@
       "test": ["uv run pytest tests/unit -q"],
       "test-integration": ["uv run pytest tests/integration -q"],
       "worker": ["uv run python -m pokecoach_python.worker"],
-      "engine-check": ["uv run python -m pokecoach_python.engine.check"]
+      "engine-check": ["uv run python -m pokecoach_python.engine.check"],
+      "engine-setup": ["cd engine-runtime && uv sync && uv pip install -e ."]
     }
   }
 }

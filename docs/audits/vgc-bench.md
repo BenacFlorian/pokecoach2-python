@@ -1,27 +1,30 @@
-# Audit VGC-Bench (plan 04 tâche 1)
+# Audit VGC-Bench (plan 04 tâche 1 / plan 04b)
 
-Commit épinglé : *à documenter lors du branchement subprocess* ([vgc-bench](https://github.com/cameronangliss/vgc-bench)).
+Commit épinglé : `d79f9532947ac114dce1dda2456a590afcd375b2` ([vgc-bench](https://github.com/cameronangliss/vgc-bench/commit/d79f9532947ac114dce1dda2456a590afcd375b2)).
+
+Manifeste PokeCoach : `engine-runtime/manifest.json`.
 
 ## Interfaces PokeCoach (contrats maison)
 
 | Mode | Méthode adaptateur | Statut |
 | --- | --- | --- |
-| Preview (phase A) | `EngineAdapter.preview` | Stub implémenté ; `vgc_bench` délègue au stub |
-| Tour 1 (phase B) | `first_turn` | Stub implémenté avec moves synthétiques ; `vgc_bench` délègue au stub, moteur réel non branché |
-| Combat complet (C/D) | `full_battle` | Stub implémenté avec un seul tour synthétique et une issue artificielle ; `vgc_bench` délègue au stub, moteur réel non branché |
+| Preview (phase A) | `EngineAdapter.preview` | Stub local ; `vgc_bench` → subprocess JSONL (`pokecoach_vgc_bridge`) |
+| Tour 1 (phase B) | `first_turn` | Idem ; moves depuis sets via bridge (fixture CI ou BC réel) |
+| Combat complet (C/D) | `full_battle` | Idem ; exige `terminalEvidence` en meta |
 
-Le raccordement réel et sa recette sont décrits dans le [plan 04b](../plans/2026-10-31-04b-moteur-reel-vgc-bench.md). Ce tableau décrit le code observé avant ce raccordement ; il ne constitue pas un audit d’exécution du checkpoint amont.
+`VgcBenchEngineAdapter` **ne délègue plus** au stub. Checkpoint ou bridge fixture requis.
 
 ## Vérification locale
 
 ```bash
-cd pokecoach2-python && devbox run engine-check
+cd pokecoach2-python && devbox run engine-setup
+devbox run engine-check -- --our-team … --opponent-team … --modes preview,first_turn,full_battle
 ```
 
-Contrôle actuel : capacités JSON et comparaison de deux previews sur snapshots vides. Il valide le câblage stub uniquement, même si le mode configuré est `vgc_bench`. Il ne démontre ni chargement BC, ni tour 1 réel, ni combat complet, ni reproductibilité du simulateur Showdown.
+Recette détaillée : [moteur-reel.md](../recettes/moteur-reel.md).
 
 ## Prochaines étapes moteur
 
-1. Isoler Python/Torch VGC-Bench dans un venv uv dédié si incompatible 3.13.
-2. Protocole JSON versionné (stdin/stdout) appelé depuis `VgcBenchEngineAdapter`.
-3. Trace expurgée de référence dans `tests/fixtures/engine-preview-reference.json`.
+1. Installer VGC-Bench épinglé dans `engine-runtime` (Torch, poke-env fork, sous-module Showdown).
+2. Implémenter `vgc_real.RealRuntime` (policy_player + rejet preview conditionnel phase B).
+3. Rejouer recettes smoke/standard A→D avec checkpoint BC compatible teampreview appris.

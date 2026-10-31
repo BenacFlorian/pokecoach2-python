@@ -14,7 +14,7 @@ Ces documents préparent le développement ; ils ne signifient pas que le serveu
 
 Complément au socle : [plan 04b — moteur réel VGC-Bench](plans/2026-10-31-04b-moteur-reel-vgc-bench.md), à réaliser **avant le plan 09 LLM**. Il raccorde preview, tour 1 et combats complets, puis fait rejouer les recettes B/C/D avec le checkpoint BC.
 
-État constaté lors de la rédaction de 04b : les phases A–D sont câblées avec le stub, et l’adaptateur nommé `vgc_bench` délègue encore à ce stub. Les validations faites ainsi prouvent le workflow, l’agrégation et le rendu des données de test ; elles ne prouvent pas des décisions BC réelles. Les libellés « Stub Move A/B » proviennent de cette entrée moteur. Les recettes réelles décrites dans les plans 5–8 restent à exécuter après raccordement.
+État moteur (plan 04b en cours) : protocole subprocess, bridge `engine-runtime/`, plus de repli stub dans `VgcBenchEngineAdapter`. Le runtime BC + Showdown (`vgc_real`) reste à brancher une fois VGC-Bench installé dans le venv moteur ; le bridge **fixture** (`POKECOACH_BRIDGE_FIXTURE=1`) sert aux tests et au diagnostic sans Torch. Recette : [moteur-reel.md](recettes/moteur-reel.md).
 
 Pour reprendre le développement actuel : terminer 04b, rejouer A–D avec des **nouveaux runs réels**, puis réaliser E. La [spécification du workflow réel](specs/2026-10-31-workflow-analyse-matchup.md) définit le contrat commun. Ne pas continuer un run créé avec le stub en basculant simplement le `.env` vers le moteur réel.
 

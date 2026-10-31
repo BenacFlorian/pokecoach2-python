@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pokecoach.local/contracts/battle-trace-v1.schema.json",
+  "title": "BattleTraceV1",
+  "type": "object",
+  "required": ["traceVersion", "requests", "choices", "events"],
+  "properties": {
+    "traceVersion": { "type": "integer", "const": 1 },
+    "requests": { "type": "array" },
+    "choices": { "type": "array" },
+    "events": { "type": "array" }
+  }
+}
