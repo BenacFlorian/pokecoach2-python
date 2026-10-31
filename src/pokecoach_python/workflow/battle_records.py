@@ -115,3 +115,7 @@ def validate_terminal_battle(
 def sample_key_for_lead(lead_slots: tuple[int, int], valid_index: int) -> str:
     c = canonical_lead(lead_slots)
     return f"{c[0]}-{c[1]}:{valid_index:04d}"
+
+
+def sample_key_for_refinement(valid_index: int) -> str:
+    return f"refinement:{valid_index:04d}"

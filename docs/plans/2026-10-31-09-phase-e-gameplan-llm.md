@@ -10,6 +10,8 @@
 
 **Spec:** [Workflow §§8–9, 11 et 14](../specs/2026-10-31-workflow-analyse-matchup.md). Prérequis : [phase D](2026-10-31-08-phase-d-affinage.md).
 
+**Prérequis moteur réel :** terminer le [plan 04b](2026-10-31-04b-moteur-reel-vgc-bench.md) et rejouer A–D sur un nouveau run réel. Les combats produits par le stub ne valident pas ce prérequis, même s’ils portent historiquement `source='simulation'`. Appeler le contrôle d’éligibilité de 04b avant toute requête au fournisseur LLM.
+
 ## Contraintes globales et points de revue
 
 - **Seuls les combats complets C/D entrent dans le LLM.** Aucun rapport partiel, fréquence A/B, classement ou recommandation C, ni résumé d’un tour isolé.

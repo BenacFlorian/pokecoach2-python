@@ -12,7 +12,11 @@ Ces documents préparent le développement ; ils ne signifient pas que le serveu
 8. [Phase D — Affinage](plans/2026-10-31-08-phase-d-affinage.md) — configuration ciblée et résultats supplémentaires, sans LLM.
 9. [Phase E — Gameplan et win condition](plans/2026-10-31-09-phase-e-gameplan-llm.md) — LLM sur les seuls combats complets C/D, puis rapport complet.
 
-Exécuter les plans dans cet ordre. La [spécification du workflow réel](specs/2026-10-31-workflow-analyse-matchup.md) définit le contrat commun. Les capacités du moteur sont vérifiées dans le socle avant de développer les phases.
+Complément au socle : [plan 04b — moteur réel VGC-Bench](plans/2026-10-31-04b-moteur-reel-vgc-bench.md), à réaliser **avant le plan 09 LLM**. Il raccorde preview, tour 1 et combats complets, puis fait rejouer les recettes B/C/D avec le checkpoint BC.
+
+État constaté lors de la rédaction de 04b : les phases A–D sont câblées avec le stub, et l’adaptateur nommé `vgc_bench` délègue encore à ce stub. Les validations faites ainsi prouvent le workflow, l’agrégation et le rendu des données de test ; elles ne prouvent pas des décisions BC réelles. Les libellés « Stub Move A/B » proviennent de cette entrée moteur. Les recettes réelles décrites dans les plans 5–8 restent à exécuter après raccordement.
+
+Pour reprendre le développement actuel : terminer 04b, rejouer A–D avec des **nouveaux runs réels**, puis réaliser E. La [spécification du workflow réel](specs/2026-10-31-workflow-analyse-matchup.md) définit le contrat commun. Ne pas continuer un run créé avec le stub en basculant simplement le `.env` vers le moteur réel.
 
 Après chaque plan A/B/C/D, lancer le process jusqu’à la phase concernée : le même run stocke son résultat partiel, se met en pause et reste consultable après rechargement du frontend. Le plan suivant le continue et l’enrichit sans recalculer ses phases validées. E ajoute uniquement le plan global et la win condition, puis publie le rapport complet.
 

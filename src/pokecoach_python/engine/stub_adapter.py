@@ -6,6 +6,8 @@ import hashlib
 import sys
 from typing import Any, Literal
 
+from pokecoach_python.workflow.aggregation.leads import canonical_lead
+from pokecoach_python.workflow.battle_records import canonical_four
 from pokecoach_python.engine.contracts import (
     BattleRecord,
     EngineAdapter,
@@ -185,7 +187,18 @@ class StubEngineAdapter(EngineAdapter):
                 participants={},
                 meta={"engine": "stub"},
             )
-        our_four, our_lead = self._sample_our_lineup(request.seed)
+        if request.our_selection is not None:
+            our_four = canonical_four(request.our_selection)
+            if request.our_lead_slots is None:
+                raise ValueError("our_lead_slots required with our_selection")
+            our_lead = canonical_lead(request.our_lead_slots)
+        else:
+            our_four, our_lead = self._sample_our_lineup(request.seed)
+        opponent_back: tuple[int, int] | None = None
+        if request.opponent_back_pair is not None:
+            opponent_back = canonical_lead(request.opponent_back_pair)
+            if opponent_back[0] in lead or opponent_back[1] in lead:
+                raise ValueError("opponent back must be disjoint from lead")
         outcome_roll = digest[8] % 10
         if outcome_roll == 0:
             outcome: Literal["win", "loss", "draw"] = "draw"
@@ -194,6 +207,12 @@ class StubEngineAdapter(EngineAdapter):
         else:
             outcome = "loss"
         our_actions = self._our_turn1_actions(request.seed, our_lead)
+        participants: dict[str, Any] = {
+            "ourFourSlots": list(our_four),
+            "ourLeadSlots": list(our_lead),
+        }
+        if opponent_back is not None:
+            participants["opponentBackPair"] = list(opponent_back)
         return BattleRecord(
             preview=PreviewRecord(
                 opponent_lead_slots=lead,
@@ -207,9 +226,6 @@ class StubEngineAdapter(EngineAdapter):
                 },
             ),
             outcome=outcome,
-            participants={
-                "ourFourSlots": list(our_four),
-                "ourLeadSlots": list(our_lead),
-            },
+            participants=participants,
             meta={"engine": "stub", "seed": request.seed},
         )

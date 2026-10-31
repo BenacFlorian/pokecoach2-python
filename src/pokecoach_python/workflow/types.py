@@ -29,7 +29,7 @@ class PhaseContext:
     engine: EngineAdapter
     report_progress: ProgressCallback
     preview_timeout_seconds: float = 30.0
-    insert_battle: Callable[[BattleRecord, str], None] | None = None
+    insert_battle: Callable[[BattleRecord, str], str] | None = None
     list_battles: Callable[[], Sequence[BattleRecord]] | None = None
 
 

@@ -54,7 +54,7 @@ def _defer_publish_after_phase(
     next_phase = remaining_phases[0]
     if handler_for(next_phase) is None:
         return False
-    chain = (("A", "B"), ("B", "C"))
+    chain = (("A", "B"), ("B", "C"), ("C", "D"))
     return (output_phase, next_phase) in chain
 
 
@@ -94,6 +94,27 @@ class WorkflowRunner:
                         raise RuntimeError(f"phase {phase} not implemented")
                     self._repo.pause_for_implementation(run_id, token)
                     break
+                battle_phase = phase if phase in ("C", "D") else "C"
+
+                def _insert_battle(rec: BattleRecord, key: str, bp=battle_phase) -> str:
+                    if bp not in ("C", "D"):
+                        raise RuntimeError("battles only supported for phases C and D")
+                    return str(
+                        self._repo.insert_battle(
+                            run_id,
+                            token,
+                            phase=bp,  # type: ignore[arg-type]
+                            sample_key=key,
+                            record=rec,
+                            expected_opponent_lead=rec.preview.opponent_lead_slots,
+                        )
+                    )
+
+                def _list_battles(bp=battle_phase) -> list[BattleRecord]:
+                    if bp not in ("C", "D"):
+                        return []
+                    return self._repo.list_battles(run_id, phase=bp)  # type: ignore[arg-type]
+
                 ctx = PhaseContext(
                     run_id=run_id,
                     lease_token=token,
@@ -111,15 +132,8 @@ class WorkflowRunner:
                     preview_timeout_seconds=float(
                         self._settings.analysis_preview_timeout_seconds
                     ),
-                    insert_battle=lambda rec, key: self._repo.insert_battle(
-                        run_id,
-                        token,
-                        phase="C",
-                        sample_key=key,
-                        record=rec,
-                        expected_opponent_lead=rec.preview.opponent_lead_slots,
-                    ),
-                    list_battles=lambda: self._repo.list_battles(run_id, phase="C"),
+                    insert_battle=_insert_battle if battle_phase in ("C", "D") else None,
+                    list_battles=_list_battles if battle_phase in ("C", "D") else None,
                 )
                 output = handler(ctx)
                 if _defer_publish_after_phase(output.phase, remaining):

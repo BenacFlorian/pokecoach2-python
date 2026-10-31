@@ -26,7 +26,7 @@
     },
     "comparisons": [],
     "firstTurns": [],
-    "selectionRuleVersion": "c-v1",
+    "selectionRuleVersion": "selection-v1",
     "limitations": []
   },
   "refinement": {

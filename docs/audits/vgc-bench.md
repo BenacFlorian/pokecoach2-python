@@ -6,9 +6,11 @@ Commit épinglé : *à documenter lors du branchement subprocess* ([vgc-bench](h
 
 | Mode | Méthode adaptateur | Statut |
 | --- | --- | --- |
-| Preview (phase A) | `EngineAdapter.preview` | Implémenté via `POKECOACH_ENGINE=stub` ; `vgc_bench` délègue au stub en attendant le worker JSON |
-| Tour 1 (phase B) | `first_turn` | Non branché |
-| Combat complet (C/D) | `full_battle` | Non branché |
+| Preview (phase A) | `EngineAdapter.preview` | Stub implémenté ; `vgc_bench` délègue au stub |
+| Tour 1 (phase B) | `first_turn` | Stub implémenté avec moves synthétiques ; `vgc_bench` délègue au stub, moteur réel non branché |
+| Combat complet (C/D) | `full_battle` | Stub implémenté avec un seul tour synthétique et une issue artificielle ; `vgc_bench` délègue au stub, moteur réel non branché |
+
+Le raccordement réel et sa recette sont décrits dans le [plan 04b](../plans/2026-10-31-04b-moteur-reel-vgc-bench.md). Ce tableau décrit le code observé avant ce raccordement ; il ne constitue pas un audit d’exécution du checkpoint amont.
 
 ## Vérification locale
 
@@ -16,7 +18,7 @@ Commit épinglé : *à documenter lors du branchement subprocess* ([vgc-bench](h
 cd pokecoach2-python && devbox run engine-check
 ```
 
-Attendu : capacités JSON, preview reproductible à seed identique, arrêt via `close()`.
+Contrôle actuel : capacités JSON et comparaison de deux previews sur snapshots vides. Il valide le câblage stub uniquement, même si le mode configuré est `vgc_bench`. Il ne démontre ni chargement BC, ni tour 1 réel, ni combat complet, ni reproductibilité du simulateur Showdown.
 
 ## Prochaines étapes moteur
 

@@ -52,5 +52,17 @@ def studied_opponent_lead_count(parameters: dict, *, default: int = 3) -> int:
     return default
 
 
+_PHASE_D_BUDGET: dict[Profile, int] = {
+    "standard": 10,
+    "smoke": 2,
+}
+
+
+def phase_d_valid_budget(profile: str) -> int:
+    if profile not in _PHASE_D_BUDGET:
+        raise ValueError(f"unknown profile: {profile}")
+    return _PHASE_D_BUDGET[profile]  # type: ignore[index]
+
+
 def max_attempts(valid_budget: int, *, multiplier: int = 5) -> int:
     return valid_budget * multiplier

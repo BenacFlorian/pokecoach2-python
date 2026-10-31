@@ -22,6 +22,8 @@ class SimulationRequest:
     opponent_lead: tuple[int, int] | None = None
     opponent_four: tuple[int, int, int, int] | None = None
     our_selection: tuple[int, int, int, int] | None = None
+    our_lead_slots: tuple[int, int] | None = None
+    opponent_back_pair: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)
