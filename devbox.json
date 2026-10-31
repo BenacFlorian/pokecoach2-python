@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.17.3/.schema/devbox.schema.json",
+  "packages": ["uv@latest"],
+  "shell": {
+    "scripts": {
+      "setup": ["uv sync --locked"],
+      "start": [
+        "uv run uvicorn pokecoach_python.main:create_app --factory --host 127.0.0.1 --port 8042 --reload"
+      ],
+      "check": ["uv run ruff check ."],
+      "test": ["uv run pytest tests/unit -q"],
+      "test-integration": ["uv run pytest tests/integration -q"]
+    }
+  }
+}
