@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     engine_max_reject_previews: int = Field(alias="ENGINE_MAX_REJECT_PREVIEWS", default=500)
     regulation_showdown_map: str = Field(
         alias="REGULATION_SHOWDOWN_MAP",
-        default='{"M-B":"gen9vgc2024regf"}',
+        default='{"M-B":"gen9championsvgc2026regmb","M-A":"gen9championsvgc2026regma"}',
     )
 
     def analysis_regulation_list(self) -> list[str]:

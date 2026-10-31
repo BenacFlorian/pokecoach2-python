@@ -3,7 +3,9 @@ name = "pokecoach-vgc-bridge"
 version = "0.1.0"
 description = "Isolated VGC-Bench / Showdown bridge for PokeCoach"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "websockets>=14.0",
+]
 
 [project.scripts]
 pokecoach-vgc-bridge = "pokecoach_vgc_bridge.server:main"

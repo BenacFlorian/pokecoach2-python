@@ -67,6 +67,8 @@ class VgcSubprocessClient:
         env["POKECOACH_REGULATION_MAP"] = settings.regulation_showdown_map_json()
         if os.environ.get("POKECOACH_BRIDGE_FIXTURE") == "1":
             env["POKECOACH_BRIDGE_FIXTURE"] = "1"
+        if settings.vgc_checkpoint_sha256:
+            env["POKECOACH_CHECKPOINT_SHA256"] = settings.vgc_checkpoint_sha256
         root = Path(__file__).resolve().parents[3]
         bridge_src = root / "engine-runtime" / "src"
         if bridge_src.is_dir():
