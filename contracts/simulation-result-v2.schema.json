@@ -1,0 +1,424 @@
+{
+  "$defs": {
+    "GameplanSection": {
+      "additionalProperties": false,
+      "properties": {
+        "adaptations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Adaptations",
+          "type": "array"
+        },
+        "eliminate": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Eliminate",
+          "type": "array"
+        },
+        "endgame": {
+          "title": "Endgame",
+          "type": "string"
+        },
+        "evidenceBattleIds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidencebattleids",
+          "type": "array"
+        },
+        "midgame": {
+          "title": "Midgame",
+          "type": "string"
+        },
+        "opening": {
+          "title": "Opening",
+          "type": "string"
+        },
+        "preserve": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Preserve",
+          "type": "array"
+        },
+        "threats": {
+          "items": {},
+          "title": "Threats",
+          "type": "array"
+        }
+      },
+      "required": [
+        "opening",
+        "midgame",
+        "endgame",
+        "threats",
+        "preserve",
+        "eliminate",
+        "adaptations",
+        "evidenceBattleIds"
+      ],
+      "title": "GameplanSection",
+      "type": "object"
+    },
+    "LeadPickSection": {
+      "additionalProperties": false,
+      "properties": {
+        "comparisons": {
+          "items": {},
+          "title": "Comparisons",
+          "type": "array"
+        },
+        "firstTurns": {
+          "items": {},
+          "title": "Firstturns",
+          "type": "array"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "selection": {
+          "$ref": "#/$defs/LeadSelection"
+        },
+        "selectionRuleVersion": {
+          "title": "Selectionruleversion",
+          "type": "string"
+        }
+      },
+      "required": [
+        "selection",
+        "comparisons",
+        "firstTurns",
+        "selectionRuleVersion",
+        "limitations"
+      ],
+      "title": "LeadPickSection",
+      "type": "object"
+    },
+    "LeadSelection": {
+      "additionalProperties": false,
+      "properties": {
+        "ourFourSlots": {
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Ourfourslots",
+          "type": "array"
+        },
+        "ourLeadSlots": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Ourleadslots",
+          "type": "array"
+        }
+      },
+      "required": [
+        "ourFourSlots",
+        "ourLeadSlots"
+      ],
+      "title": "LeadSelection",
+      "type": "object"
+    },
+    "OpponentLeadEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "slots": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Slots",
+          "type": "array"
+        },
+        "turn1": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Turn1Section"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "slots",
+        "count"
+      ],
+      "title": "OpponentLeadEntry",
+      "type": "object"
+    },
+    "OpponentLeadsSection": {
+      "additionalProperties": false,
+      "properties": {
+        "leads": {
+          "items": {
+            "$ref": "#/$defs/OpponentLeadEntry"
+          },
+          "title": "Leads",
+          "type": "array"
+        },
+        "sampleSize": {
+          "minimum": 0,
+          "title": "Samplesize",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sampleSize",
+        "leads"
+      ],
+      "title": "OpponentLeadsSection",
+      "type": "object"
+    },
+    "RefinementSection": {
+      "additionalProperties": false,
+      "properties": {
+        "battleIds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Battleids",
+          "type": "array"
+        },
+        "configuration": {
+          "$ref": "#/$defs/LeadSelection"
+        },
+        "firstTurns": {
+          "items": {},
+          "title": "Firstturns",
+          "type": "array"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "outcomes": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Outcomes",
+          "type": "object"
+        },
+        "sampleSize": {
+          "minimum": 0,
+          "title": "Samplesize",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "configuration",
+        "sampleSize",
+        "outcomes",
+        "firstTurns",
+        "battleIds",
+        "limitations"
+      ],
+      "title": "RefinementSection",
+      "type": "object"
+    },
+    "Turn1Section": {
+      "additionalProperties": false,
+      "properties": {
+        "backPairs": {
+          "items": {},
+          "title": "Backpairs",
+          "type": "array"
+        },
+        "backSlotMarginals": {
+          "items": {},
+          "title": "Backslotmarginals",
+          "type": "array"
+        },
+        "endStateNotes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Endstatenotes",
+          "type": "array"
+        },
+        "jointActions": {
+          "items": {},
+          "title": "Jointactions",
+          "type": "array"
+        },
+        "sampleSize": {
+          "minimum": 0,
+          "title": "Samplesize",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sampleSize",
+        "jointActions",
+        "backPairs",
+        "backSlotMarginals",
+        "endStateNotes"
+      ],
+      "title": "Turn1Section",
+      "type": "object"
+    },
+    "WinConditionSection": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "evidenceBattleIds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidencebattleids",
+          "type": "array"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "description",
+        "rationale",
+        "evidenceBattleIds"
+      ],
+      "title": "WinConditionSection",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "completedPhases": {
+      "items": {
+        "enum": [
+          "A",
+          "B",
+          "C",
+          "D",
+          "synthesis"
+        ],
+        "type": "string"
+      },
+      "title": "Completedphases",
+      "type": "array"
+    },
+    "gameplan": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/GameplanSection"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "leadPick": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LeadPickSection"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "opponentLeads": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OpponentLeadsSection"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "refinement": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RefinementSection"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "schemaVersion": {
+      "const": 2,
+      "title": "Schemaversion",
+      "type": "integer"
+    },
+    "source": {
+      "const": "simulation",
+      "title": "Source",
+      "type": "string"
+    },
+    "winCondition": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/WinConditionSection"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "source",
+    "completedPhases",
+    "opponentLeads",
+    "leadPick",
+    "refinement",
+    "gameplan",
+    "winCondition"
+  ],
+  "title": "SimulationResultV2",
+  "type": "object"
+}

@@ -19,6 +19,7 @@ from pokecoach_python.schemas.analysis_commands import (
     AnalysisStartRequest,
     AnalysisStartResponse,
 )
+from pokecoach_python.schemas.analysis_result import empty_envelope
 
 logger = logging.getLogger(__name__)
 
@@ -140,18 +141,41 @@ def _active_run_exists(session: Session, matchup_id: uuid.UUID) -> bool:
     return result.first() is not None
 
 
-def _insert_queued_run(session: Session, matchup_id: uuid.UUID) -> AnalysisStartResponse:
+def _insert_queued_run(
+    session: Session,
+    matchup_id: uuid.UUID,
+    target_phase: str,
+) -> AnalysisStartResponse:
+    empty = json.dumps(empty_envelope())
     try:
         with session.begin():
             inserted = session.connection().execute(
                 text(
                     """
-                    INSERT INTO core.matchup_runs (matchup_id, source, status)
-                    VALUES (:matchup_id, 'simulation', 'queued')
+                    INSERT INTO core.matchup_runs (
+                      matchup_id,
+                      source,
+                      status,
+                      report_version,
+                      target_phase,
+                      partial_result
+                    )
+                    VALUES (
+                      :matchup_id,
+                      'simulation',
+                      'queued',
+                      2,
+                      :target_phase,
+                      CAST(:partial_result AS jsonb)
+                    )
                     RETURNING id, status, process_status::text
                     """
                 ),
-                {"matchup_id": matchup_id},
+                {
+                    "matchup_id": matchup_id,
+                    "target_phase": target_phase,
+                    "partial_result": empty,
+                },
             ).one()
     except DBAPIError as exc:
         logger.error("analysis start insert failed: %s", type(exc).__name__)
@@ -222,6 +246,6 @@ def start_analysis(
             },
         )
 
-    response = _insert_queued_run(session, matchup_id)
+    response = _insert_queued_run(session, matchup_id, body.target_phase)
     _IDEMPOTENCY[idempotency_key] = (fingerprint, response)
     return response, 202

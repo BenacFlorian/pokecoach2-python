@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 2,
+  "source": "simulation",
+  "completedPhases": ["A", "B", "C", "D"],
+  "opponentLeads": {
+    "sampleSize": 100,
+    "leads": [
+      {
+        "id": "lead-0-1",
+        "slots": [0, 1],
+        "count": 42,
+        "turn1": {
+          "sampleSize": 42,
+          "jointActions": [],
+          "backPairs": [],
+          "backSlotMarginals": [],
+          "endStateNotes": []
+        }
+      }
+    ]
+  },
+  "leadPick": {
+    "selection": {
+      "ourFourSlots": [0, 1, 2, 3],
+      "ourLeadSlots": [0, 1]
+    },
+    "comparisons": [],
+    "firstTurns": [],
+    "selectionRuleVersion": "c-v1",
+    "limitations": []
+  },
+  "refinement": {
+    "configuration": { "ourFourSlots": [0, 1, 2, 3], "ourLeadSlots": [0, 1] },
+    "sampleSize": 10,
+    "outcomes": { "wins": 4, "losses": 5, "draws": 1 },
+    "firstTurns": [],
+    "battleIds": [],
+    "limitations": []
+  },
+  "gameplan": null,
+  "winCondition": null
+}

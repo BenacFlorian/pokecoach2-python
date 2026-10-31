@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 2,
+  "source": "simulation",
+  "completedPhases": [],
+  "opponentLeads": null,
+  "leadPick": null,
+  "refinement": null,
+  "gameplan": null,
+  "winCondition": null
+}
