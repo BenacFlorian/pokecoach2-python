@@ -12,7 +12,12 @@
       "test-integration": ["uv run pytest tests/integration -q"],
       "worker": ["uv run python -m pokecoach_python.worker"],
       "engine-check": ["uv run python -m pokecoach_python.engine.check"],
-      "engine-setup": ["cd engine-runtime && uv sync && uv pip install -e ."]
+      "engine-setup": [
+        "cd engine-runtime && uv sync --group tools && uv pip install -e ."
+      ],
+      "engine-fetch-checkpoint": [
+        "cd engine-runtime && uv sync --group tools && uv run python scripts/fetch_bc_checkpoint.py --output ../checkpoints/bc-seed1-100.zip"
+      ]
     }
   }
 }

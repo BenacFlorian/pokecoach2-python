@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from pokecoach_vgc_bridge.checkpoint import fingerprint_from_path, verify_checkpoint
+from pokecoach_vgc_bridge.checkpoint import verify_checkpoint
 from pokecoach_vgc_bridge.policy import load_manifest
 from pokecoach_vgc_bridge.showdown_teams import pokecoach_regulation_to_vgc_reg, snapshot_to_showdown_export
 
@@ -70,19 +70,20 @@ class RealRuntime:
         snapshot_to_showdown_export(our)
         snapshot_to_showdown_export(opp)
         reg_key = pokecoach_regulation_to_vgc_reg(regulation)
+        deps_ok = _deps_ok()
         return {
             "regulation": regulation,
             "checkpointId": str(config.get("checkpoint_id", "")),
             "checkpointFingerprint": self._fingerprint[:16],
             "showdownFormat": _format_for_reg(payload, reg_key),
-            "supportsPreview": True,
-            "supportsFirstTurn": False,
-            "supportsFullBattle": False,
+            "supportsPreview": deps_ok,
+            "supportsFirstTurn": deps_ok,
+            "supportsFullBattle": deps_ok,
             "stochastic": True,
             "pythonVersion": _python_version(),
             "notes": (
                 f"checkpoint sha256={self._fingerprint[:16]}…",
-                "first_turn/full_battle wiring in progress",
+                "requires Showdown + vgc-bench in engine-runtime",
             ),
         }
 
@@ -100,16 +101,62 @@ class RealRuntime:
             regulation=regulation,
             seed=seed,
         )
-        meta = dict(result.get("meta") or {})
-        meta["engineFingerprint"] = self._fingerprint[:16]
-        result["meta"] = meta
-        return result
+        return _with_fingerprint(result, self._fingerprint)
 
     def _first_turn(self, payload: dict[str, Any]) -> dict[str, Any]:
-        raise RuntimeError("FIRST_TURN_PENDING: turn-1 trace extraction not wired yet")
+        from pokecoach_vgc_bridge.battle_runner import run_first_turn_sync
+
+        lead = payload.get("opponentLead")
+        if not lead or len(lead) != 2:
+            raise ValueError("opponentLead required")
+        opponent_lead = (int(lead[0]), int(lead[1]))
+        our_lead_raw = payload.get("ourLeadSlots")
+        our_lead = (
+            (int(our_lead_raw[0]), int(our_lead_raw[1]))
+            if our_lead_raw and len(our_lead_raw) == 2
+            else None
+        )
+        result = run_first_turn_sync(
+            checkpoint_path=self._checkpoint_path,
+            our_snapshot=payload["ourSnapshot"],
+            opponent_snapshot=payload["opponentSnapshot"],
+            regulation=str(payload.get("regulation", "M-B")),
+            seed=int(payload.get("seed", 0)),
+            opponent_lead=opponent_lead,
+            our_lead=our_lead,
+        )
+        return _with_fingerprint(result, self._fingerprint)
 
     def _full_battle(self, payload: dict[str, Any]) -> dict[str, Any]:
-        raise RuntimeError("FULL_BATTLE_PENDING: terminal battle trace not wired yet")
+        from pokecoach_vgc_bridge.battle_runner import run_full_battle_sync
+
+        lead = payload.get("opponentLead")
+        if not lead:
+            raise ValueError("opponentLead required")
+        opponent_lead = (int(lead[0]), int(lead[1]))
+        result = run_full_battle_sync(
+            checkpoint_path=self._checkpoint_path,
+            our_snapshot=payload["ourSnapshot"],
+            opponent_snapshot=payload["opponentSnapshot"],
+            regulation=str(payload.get("regulation", "M-B")),
+            seed=int(payload.get("seed", 0)),
+            opponent_lead=opponent_lead,
+            payload=payload,
+        )
+        return _with_fingerprint(result, self._fingerprint)
+
+
+def _with_fingerprint(result: dict[str, Any], fingerprint: str) -> dict[str, Any]:
+    meta = dict(result.get("meta") or {})
+    meta["engineFingerprint"] = fingerprint[:16]
+    result["meta"] = meta
+    return result
+
+
+def _deps_ok() -> bool:
+    from pokecoach_vgc_bridge.battle_runner import deps_available
+
+    return deps_available()
 
 
 def _python_version() -> str:

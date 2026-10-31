@@ -68,7 +68,19 @@ def test_fixture_bridge_preflight_and_preview(fixture_env):
             )
         )
         assert turn1.payload["actions"]
-        assert turn1.payload["actions"][0]["move"] != "Stub Move A"
+        battle = engine.full_battle(
+            SimulationRequest(
+                our_snapshot=SAMPLE_SNAPSHOT,
+                opponent_snapshot=SAMPLE_SNAPSHOT,
+                regulation="M-B",
+                checkpoint_id="fixture",
+                seed=42,
+                timeout_seconds=5.0,
+                opponent_lead=preview.opponent_lead_slots,
+            )
+        )
+        assert battle.outcome in ("win", "loss", "draw")
+        assert battle.meta.get("terminalEvidence")
     finally:
         engine.close()
 

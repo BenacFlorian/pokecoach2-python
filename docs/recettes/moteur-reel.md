@@ -11,8 +11,8 @@
 
 ```bash
 devbox run engine-setup
-# Télécharger le checkpoint BC (huggingface_hub requis dans engine-runtime/.venv)
-engine-runtime/.venv/bin/python engine-runtime/scripts/fetch_bc_checkpoint.py --output checkpoints/bc-seed1-100.zip
+devbox run engine-fetch-checkpoint
+# Copier dans .env les lignes VGC_CHECKPOINT_PATH et VGC_CHECKPOINT_SHA256 affichées
 
 # Showdown local (depuis clone vgc-bench/pokemon-showdown, port 8090)
 # node pokemon-showdown start 8090 --no-security

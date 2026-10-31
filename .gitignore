@@ -1,6 +1,7 @@
 .env
 .venv/
 engine-runtime/.venv/
+checkpoints/
 .devbox/
 __pycache__/
 *.py[cod]

@@ -19,6 +19,7 @@ packages = ["src/pokecoach_vgc_bridge"]
 
 [dependency-groups]
 dev = ["pytest>=8.3"]
+tools = ["huggingface-hub>=0.36"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

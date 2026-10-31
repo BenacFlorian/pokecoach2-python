@@ -33,7 +33,11 @@ def main() -> int:
     try:
         from huggingface_hub import hf_hub_download
     except ImportError:
-        print("Install huggingface_hub in engine-runtime: uv pip install huggingface_hub")
+        print(
+            "huggingface-hub manquant dans le venv engine-runtime.\n"
+            "Depuis pokecoach2-python : devbox run engine-setup\n"
+            "Puis : devbox run engine-fetch-checkpoint"
+        )
         return 1
     args.output.parent.mkdir(parents=True, exist_ok=True)
     cached = hf_hub_download(repo_id=args.repo, filename=args.file)
