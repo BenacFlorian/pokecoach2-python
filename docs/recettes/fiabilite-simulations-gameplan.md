@@ -43,5 +43,5 @@ Conserver pour au moins un run neuf : `runId`, sélection C, extrait JSON d’un
 
 ## Limites connues (nov. 2026)
 
-- **Tâche 2** (capture `BattleCapture`, identités, retrait des fallbacks `Unknown`) et **tâche 4** (agrégation `resolutions` + Angular) peuvent être partiellement livrées ; suivre le plan `docs/plans/2026-11-01-13-fiabilite-simulations-traces-gameplan.md`.
-- Jetons `{{ours:N}}` dans la prose LLM : garde-fou actuel = détection des noms hors bring-4 ; rendu tokenisé complet prévu dans une itération suivante.
+- Les runs terminés avant cette bascule restent invalides pour **synthesis** tant que leurs combats D n’ont pas de traces complètes ; voir la section nettoyage ci-dessus.
+- Le contrôle LLM exige des jetons `{{ours:N}}` / `{{opponent:N}}` en sortie interne ; le rapport publié affiche les noms rendus sans jetons.

@@ -8,6 +8,7 @@ import uuid
 from typing import Any
 from urllib.parse import urlparse
 
+from pokecoach_vgc_bridge.battle_capture import BattleCapture
 from pokecoach_vgc_bridge.showdown_teams import (
     pokecoach_regulation_to_vgc_reg,
     snapshot_to_showdown_export,
@@ -200,6 +201,13 @@ async def create_policy_pair(
     accept_ots = os.environ.get("POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS", "0") == "1"
 
     class RecordingPolicyPlayer(deps["PolicyPlayer"]):
+        def choose_move(self, battle: Any):
+            order = super().choose_move(battle)
+            capture = getattr(self, "pokecoach_capture", None)
+            if capture is not None:
+                capture.record_order(turn=int(getattr(battle, "turn", 0) or 0), order=order)
+            return order
+
         def teampreview(self, battle: Any):
             imposed_four = getattr(self, "pokecoach_imposed_four", None)
             imposed = getattr(self, "pokecoach_imposed_lead", None)
@@ -212,6 +220,9 @@ async def create_policy_pair(
             slots = _preview_slots_from_team_command(choice)
             if slots is not None:
                 self.pokecoach_preview_slots = slots
+            capture = getattr(self, "pokecoach_capture", None)
+            if capture is not None:
+                capture.record_teampreview(choice, slots)
             return choice
 
     p1 = RecordingPolicyPlayer(
@@ -267,6 +278,8 @@ async def create_policy_pair(
             else None
         )
     )
+    p1.pokecoach_capture = BattleCapture(side="ours")
+    p2.pokecoach_capture = BattleCapture(side="opponent")
     _start_ps_listening(p1)
     _start_ps_listening(p2)
     return p1, p2

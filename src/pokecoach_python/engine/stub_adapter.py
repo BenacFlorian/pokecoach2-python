@@ -127,6 +127,7 @@ class StubEngineAdapter(EngineAdapter):
                 "ourPreviewSlots": list(our_four),
                 "opponentPreviewSlots": list((*lead, *back_pair)),
             },
+            "turnEvents": [],
             "endStateNotes": [f"stub turn1 lead {slot_a}-{slot_b}"],
         }
         return TurnOneRecord(
@@ -221,22 +222,70 @@ class StubEngineAdapter(EngineAdapter):
         participants: dict[str, Any] = {
             "ourFourSlots": list(our_four),
             "ourLeadSlots": list(our_lead),
+            "opponentSelectedSlots": list(
+                (lead[0], lead[1], opponent_back[0], opponent_back[1])
+                if opponent_back
+                else (lead[0], lead[1], 2, 3)
+            ),
         }
         if opponent_back is not None:
             participants["opponentBackPair"] = list(opponent_back)
+        turn_count = 1 + (digest[9] % 2)
+        our_survivors = list(our_lead) if outcome != "loss" else []
+        opp_survivors = list(lead) if outcome == "loss" else []
+        turns_list: list[dict[str, Any]] = []
+        damage_events: list[dict[str, Any]] = []
+        for idx in range(1, turn_count + 1):
+            events: list[dict[str, Any]] = []
+            if idx == 1 and outcome == "loss":
+                events.append(
+                    {
+                        "kind": "damage",
+                        "turn": 1,
+                        "source": {"side": "opponent", "slot": lead[0]},
+                        "target": {"side": "ours", "slot": our_lead[0]},
+                        "hpPercentLoss": 55.0,
+                        "direct": True,
+                        "attributed": True,
+                    }
+                )
+                damage_events.append(events[-1])
+            if idx > 1 and not events:
+                events.append({"kind": "state", "turn": idx, "note": "stub-synthetic-turn"})
+            turns_list.append(
+                {
+                    "turn": idx,
+                    "ourActions": our_actions if idx == 1 else [],
+                    "opponentActions": [],
+                    "events": events,
+                }
+            )
         return BattleRecord(
             preview=PreviewRecord(
                 opponent_lead_slots=lead,
                 our_lead_slots=our_lead,
                 meta={"engine": "stub"},
             ),
-            turns=(
-                {
-                    "turn": 1,
-                    "ourActions": our_actions,
-                },
-            ),
+            turns=tuple(turns_list),
             outcome=outcome,
             participants=participants,
-            meta={"engine": "stub", "seed": request.seed},
+            meta={
+                "engine": "stub",
+                "seed": request.seed,
+                "terminalEvidence": {"kind": "simulator", "turnCount": turn_count, "finished": True},
+                "terminalState": {
+                    "ours": {
+                        "selectedSlots": list(our_four),
+                        "enteredSlots": list(our_four),
+                        "survivorSlots": our_survivors or list(our_lead[:1]),
+                    },
+                    "opponent": {
+                        "selectedSlots": participants["opponentSelectedSlots"],
+                        "enteredSlots": list(participants["opponentSelectedSlots"]),
+                        "survivorSlots": opp_survivors or list(lead),
+                    },
+                },
+                "captureQuality": {"exactHp": True, "roundedHp": False},
+                "damageEvents": damage_events,
+            },
         )

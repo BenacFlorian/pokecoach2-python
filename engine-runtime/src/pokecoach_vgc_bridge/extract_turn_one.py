@@ -141,7 +141,7 @@ def _actions_for_side(
     actions: list[dict[str, Any]] = []
     for slot in lead_order:
         mon = _mon_for_roster_slot(team, int(slot), active_roster)
-        move = _move_label(mon)
+        move = _move_label(mon, strict=True)
         request_target = _request_target_from_mon(mon)
         info = resolve_move_target(move, catalog, request_target=request_target)
         action = _move_action(side=side, slot=int(slot), move=move, targets=[])
@@ -322,7 +322,7 @@ def _normalize_showdown_move_name(raw: str) -> str:
     return name.replace("_", " ").title()
 
 
-def _move_label(mon: Any) -> str:
+def _move_label(mon: Any, *, strict: bool = False) -> str:
     for move in getattr(mon, "moves", {}).values():
         if getattr(move, "is_last_used", False):
             label = getattr(move, "name", None) or getattr(move, "id", None) or move
@@ -332,6 +332,8 @@ def _move_label(mon: Any) -> str:
         if val is not None:
             label = getattr(val, "name", None) or getattr(val, "id", None) or val
             return _normalize_showdown_move_name(str(label))
+    if strict:
+        raise RuntimeError("TURN1_EXTRACT: move evidence missing for active lead")
     return "Unknown"
 
 

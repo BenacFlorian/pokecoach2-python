@@ -20,6 +20,7 @@ from pokecoach_python.workflow.aggregation.turn_one import (
     _frequency_rows,
     _sort_actions,
 )
+from pokecoach_python.workflow.aggregation.action_resolutions import attach_resolutions_to_frequency_rows
 
 
 def _actions_from_payload(payload: dict[str, Any], *, side: str) -> list[dict[str, Any]]:
@@ -79,10 +80,24 @@ def aggregate_opening_study(
     opp_rows = _frequency_rows(opp_counter, sample_size)
     for row in opp_rows:
         row["value"] = _sort_actions(row["value"])
+    opp_rows = attach_resolutions_to_frequency_rows(
+        opp_rows,
+        records=list(records),
+        side="opponent",
+        joint_key_fn=canonical_joint_key,
+        actions_from_payload=_actions_from_payload,
+    )
 
     our_rows = _frequency_rows(our_counter, sample_size)
     for row in our_rows:
         row["value"] = _sort_actions(row["value"])
+    our_rows = attach_resolutions_to_frequency_rows(
+        our_rows,
+        records=list(records),
+        side="ours",
+        joint_key_fn=canonical_joint_key,
+        actions_from_payload=_actions_from_payload,
+    )
 
     if not our_rows:
         raise ValueError("ourActions distribution empty")

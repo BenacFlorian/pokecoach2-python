@@ -12,7 +12,11 @@ from pokecoach_python.llm.client import StrategyClient
 from pokecoach_python.llm.output_locale import parse_output_locale
 from pokecoach_python.llm.source_preparation import prepare_sources
 from pokecoach_python.llm.source_selection import validate_source_selection
-from pokecoach_python.llm.strategy_references import validate_strategy_team_references
+from pokecoach_python.llm.strategy_references import (
+    render_strategy_references,
+    validate_strategy_reference_tokens,
+    validate_strategy_team_references,
+)
 from pokecoach_python.schemas.analysis_result import SimulationResultV2, validate_result
 from pokecoach_python.workflow.types import PhaseContext, PhaseOutput
 
@@ -73,6 +77,11 @@ def run_phase_e(context: PhaseContext) -> PhaseOutput:
         store=store,
         client=client,
         output_locale=output_locale,
+    )
+    validate_strategy_reference_tokens(strategy, our_four=our_four)  # type: ignore[arg-type]
+    strategy = render_strategy_references(
+        strategy,
+        snapshots=(context.our_snapshot, context.opponent_snapshot),
     )
     validate_strategy_team_references(
         strategy,

@@ -142,6 +142,21 @@ def run_phase_b(context: PhaseContext) -> PhaseOutput:
             sort_keys=True,
         ).encode()
     ).hexdigest()[:16]
+    compact_samples: list[dict[str, Any]] = []
+    for lead_id, recs in records_by_id.items():
+        for index, record in enumerate(recs):
+            payload = record.payload
+            compact_samples.append(
+                {
+                    "leadId": lead_id,
+                    "sampleIndex": index,
+                    "ourFourSlots": list(our_four),
+                    "ourLeadSlots": list(our_lead),
+                    "opponentLeadSlots": list(record.opponent_lead_slots),
+                    "previewAccepted": payload.get("previewAccepted"),
+                    "turnEvents": payload.get("turnEvents") or [],
+                }
+            )
     return PhaseOutput(
         phase="B",
         result=envelope,
@@ -154,5 +169,7 @@ def run_phase_b(context: PhaseContext) -> PhaseOutput:
             "budgetPerLead": budget,
             "samplingPolicy": _SAMPLING_POLICY,
             "auditFingerprint": audit_fingerprint,
+            "samples": compact_samples,
         },
+        metadata_patch={"phases": {"B": {"samples": compact_samples}}},
     )

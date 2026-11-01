@@ -19,26 +19,26 @@ from tests.unit.phase_e_fixtures import make_snapshots, make_stored_battle
 def _strategy_payload() -> dict:
     return {
         "gameplan": {
-            "opening": "Use the first turns to secure speed and information.",
-            "midgame": "Trade into their damage core once positioning is stable.",
-            "endgame": "Preserve your fastest closer for the final exchange.",
+            "opening": "Use the first turns to secure speed with {{ours:0}}.",
+            "midgame": "Trade into their damage core once positioning is stable via {{ours:1}}.",
+            "endgame": "Preserve {{ours:0}} for the final exchange.",
             "threats": [
                 {
                     "pokemon": {"side": "opponent", "slot": 2},
-                    "explanation": "It was the main damage source in the observed loss.",
+                    "explanation": "{{opponent:2}} was the main damage source in the observed loss.",
                 }
             ],
             "strengths": [
                 {
                     "pokemon": {"side": "ours", "slot": 0},
-                    "explanation": "It converted early pressure into clean endgames in the wins.",
+                    "explanation": "{{ours:0}} converted early pressure into clean endgames in the wins.",
                 }
             ],
             "evidenceBattleIds": ["b1", "b2"],
         },
         "winCondition": {
-            "description": "Contain slot 2, then close with slot 0 once tempo is secured.",
-            "rationale": "The winning lines preserved slot 0 for the final turns after stabilising.",
+            "description": "Contain {{opponent:2}}, then close with {{ours:0}} once tempo is secured.",
+            "rationale": "The winning lines preserved {{ours:0}} for the final turns after stabilising.",
             "evidenceBattleIds": ["b1"],
         },
     }

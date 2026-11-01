@@ -236,7 +236,7 @@ async def _run_first_turn_battle(
     back_pair = _back_pair_from_preview_four(opp_four)
     our_lead_order = (our_four[0], our_four[1])
     if our_imposed_four is not None:
-        if our_four_obs != our_imposed_four:
+        if our_four != our_imposed_four:
             raise ValueError("observed our bring-4 mismatch with imposed selection")
     battle_format = _battle_format_for_regulation(regulation)
     payload = extract_turn_one_payload(
@@ -269,13 +269,20 @@ async def _run_first_turn_battle(
         our_actions=our_actions,
     )
     body = result["payload"]
-    body["ourFourSlots"] = list(our_four_obs)
+    body["ourFourSlots"] = list(our_four)
     body["opponentLeadSlots"] = list(imposed)
     body["opponentBackPair"] = list(back_pair)
     body["previewAccepted"] = {
-        "ourPreviewSlots": list(our_four_obs),
+        "ourPreviewSlots": list(our_four),
         "opponentPreviewSlots": list(opp_four),
     }
+    from pokecoach_vgc_bridge.battle_capture import attach_replay_to_trace, merge_player_captures
+    from pokecoach_vgc_bridge.pokemon_identity import PokemonIdentityMap
+
+    identity = PokemonIdentityMap.from_snapshots(our_snapshot, opponent_snapshot)
+    trace = merge_player_captures(p1.pokecoach_capture, p2.pokecoach_capture)
+    attach_replay_to_trace(trace, battle, identity=identity, our_is_p1=True)
+    body["turnEvents"] = [event for event in trace.events if int(event.get("turn") or 0) <= 1]
     return result
 
 
@@ -301,13 +308,16 @@ async def _run_full_battle(
     opponent_imposed_four: tuple[int, int, int, int] | None = None
 
     if isinstance(our_sel_raw, list) and len(our_sel_raw) == 4:
-        our_imposed_four = tuple(int(s) for s in our_sel_raw)  # type: ignore[assignment]
-        if len(set(our_imposed_four)) != 4:
+        from pokecoach_vgc_bridge.battle_session import imposed_four_with_lead_order
+
+        raw_four = tuple(int(s) for s in our_sel_raw)
+        if len(set(raw_four)) != 4:
             raise ValueError("ourSelection must contain four distinct slots")
         if our_lead_raw and len(our_lead_raw) == 2:
             our_imposed_lead = (int(our_lead_raw[0]), int(our_lead_raw[1]))
-            if our_imposed_lead[0] not in our_imposed_four or our_imposed_lead[1] not in our_imposed_four:
-                raise ValueError("ourLeadSlots must be within ourSelection")
+            our_imposed_four = imposed_four_with_lead_order(raw_four, our_imposed_lead)
+        else:
+            our_imposed_four = raw_four  # type: ignore[assignment]
     elif our_lead_raw and len(our_lead_raw) == 2:
         our_imposed_lead = (int(our_lead_raw[0]), int(our_lead_raw[1]))
 
@@ -399,13 +409,17 @@ async def _run_full_battle(
     else:
         raise RuntimeError("BATTLE_OUTCOME_UNKNOWN: no win/loss/tie recorded")
     turn_count = int(getattr(battle, "turn", 1) or 1)
+    from pokecoach_vgc_bridge.battle_capture import attach_replay_to_trace, merge_player_captures
     from pokecoach_vgc_bridge.full_battle_trace import (
-        FullBattleTrace,
         build_turns_from_battle_summary,
         capture_terminal_state_from_battle,
         normalize_complete_battle,
     )
+    from pokecoach_vgc_bridge.pokemon_identity import PokemonIdentityMap
 
+    identity = PokemonIdentityMap.from_snapshots(our_snapshot, opponent_snapshot)
+    trace = merge_player_captures(p1.pokecoach_capture, p2.pokecoach_capture)
+    attach_replay_to_trace(trace, battle, identity=identity, our_is_p1=True)
     opponent_selected = opp_four_obs
     terminal_state = capture_terminal_state_from_battle(
         battle,
@@ -416,8 +430,15 @@ async def _run_full_battle(
         turn_count=turn_count,
         our_actions_turn1=our_actions,
         opponent_actions_turn1=turn1["actions"],
-        trace=FullBattleTrace(),
+        trace=trace,
     )
+    damage_events = [event for event in trace.events if event.get("kind") == "damage"]
+    if turn_count > 1:
+        for turn_index in range(2, turn_count + 1):
+            if not any(int(event.get("turn") or 0) == turn_index for event in trace.events):
+                raise RuntimeError(
+                    f"BATTLE_CAPTURE_INCOMPLETE: turn {turn_index} has no captured events"
+                )
     record = normalize_complete_battle(
         opponent_lead=imposed,
         our_lead=our_lead,
@@ -437,7 +458,9 @@ async def _run_full_battle(
             "captureMethod": "poke-env-summary",
         },
         opponent_back_pair=opp_back,
+        damage_events=damage_events,
         capture_quality={"exactHp": True, "roundedHp": False},
+        trace=trace,
         engine_fingerprint="vgc-bench",
     )
     return record
