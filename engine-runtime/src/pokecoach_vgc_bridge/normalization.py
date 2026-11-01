@@ -65,14 +65,16 @@ def build_battle_record(
     seed: int,
     engine: str,
     payload: dict[str, Any],
+    opponent_back_pair: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
     participants: dict[str, Any] = {
         "ourFourSlots": list(our_four),
         "ourLeadSlots": list(our_lead),
     }
-    opp_back = payload.get("opponentBackPair")
-    if opp_back and len(opp_back) == 2:
-        participants["opponentBackPair"] = [int(opp_back[0]), int(opp_back[1])]
+    if opponent_back_pair is not None:
+        a, b = opponent_back_pair
+        participants["opponentBackPair"] = [int(a), int(b)]
+    _ = payload
     return {
         "formatVersion": 1,
         "preview": {

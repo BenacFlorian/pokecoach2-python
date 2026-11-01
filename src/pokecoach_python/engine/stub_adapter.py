@@ -195,7 +195,8 @@ class StubEngineAdapter(EngineAdapter):
             our_four = canonical_four(request.our_selection)
             if request.our_lead_slots is None:
                 raise ValueError("our_lead_slots required with our_selection")
-            our_lead = canonical_lead(request.our_lead_slots)
+            our_lead = (request.our_lead_slots[0], request.our_lead_slots[1])
+            canonical_lead(our_lead)
         else:
             our_four, our_lead = self._sample_our_lineup(request.seed)
         opponent_back: tuple[int, int] | None = None

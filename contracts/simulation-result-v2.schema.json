@@ -227,6 +227,11 @@
         "configuration": {
           "$ref": "#/$defs/LeadSelection"
         },
+        "firstTurnSampleSize": {
+          "minimum": 0,
+          "title": "Firstturnsamplesize",
+          "type": "integer"
+        },
         "firstTurns": {
           "items": {},
           "title": "Firstturns",
@@ -247,15 +252,68 @@
           "type": "object"
         },
         "sampleSize": {
-          "minimum": 0,
+          "minimum": 1,
           "title": "Samplesize",
           "type": "integer"
+        },
+        "samplingPolicy": {
+          "const": "weighted-ab",
+          "title": "Samplingpolicy",
+          "type": "string"
+        },
+        "samplingScope": {
+          "const": "all-observed-leads",
+          "title": "Samplingscope",
+          "type": "string"
+        },
+        "scenarioCounts": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "count": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "opponentBackPair": {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "opponentLeadId": {
+                "type": "string"
+              },
+              "opponentLeadSlots": {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "opponentLeadId",
+              "opponentLeadSlots",
+              "opponentBackPair",
+              "count"
+            ],
+            "type": "object"
+          },
+          "title": "Scenariocounts",
+          "type": "array"
         }
       },
       "required": [
         "configuration",
+        "samplingPolicy",
+        "samplingScope",
         "sampleSize",
         "outcomes",
+        "scenarioCounts",
+        "firstTurnSampleSize",
         "firstTurns",
         "battleIds",
         "limitations"

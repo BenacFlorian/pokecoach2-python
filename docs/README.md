@@ -4,6 +4,8 @@ Ces documents préparent le développement ; ils ne signifient pas que le serveu
 
 Évolution validée le 1er novembre 2026 : [plan backend 10 — ouvertures conditionnées à notre sélection](plans/2026-11-01-10-ouvertures-conditionnees-au-lead.md), puis [plan frontend 5](../../pokecoach2-angular/docs/plans/2026-11-01-05-ouvertures-conditionnees-lead-pick.md). Ils couvrent **A → C → B → D**, le remplacement du contrat actuel après nettoyage des anciennes analyses et les tours 1 des deux côtés pour notre quatre/lead fixes. **E est hors périmètre** : son plan dédié reste à implémenter et viendra conclure le processus. Les plans historiques ci-dessous décrivent l’ancien ordre jusqu’à l’application de cette évolution.
 
+Nouvelle évolution à implémenter : [plan 11 — phase D, évaluation globale de notre sélection](plans/2026-11-01-11-phase-d-affinage-global.md). Il remplace l’affinage sur un scénario unique par un échantillonnage sur **tous les leads de A et leurs backs B**, avec notre sélection C fixe. Budget conservé à **2 standard / 2 smoke pour tester**, correction des contraintes du moteur réel et adaptation du bloc Angular D incluses. Les anciennes analyses seront nettoyées à la bascule, sans nouvelle version de résultat ; E reste hors périmètre. Les descriptions de D dans les plans 08 et 10 restent historiques jusqu’à cette refonte.
+
 1. [Initialisation Python](plans/2026-10-31-01-python-initialisation.md) — Devbox, uv, FastAPI, connexion PostgreSQL et image pour la stack existante.
 2. [Route de démonstration](plans/2026-10-31-02-python-demo-seed.md) — réinstallation complète de la seed via FastAPI, appel Angular et relecture PostGraphile.
 3. [Adaptations du système existant](plans/2026-10-31-03-adaptations-resultats-progressifs.md) — tout le §10 de la spec : SQL, droits, contrats v2, résultats partiels et lecteur Angular.
@@ -18,7 +20,7 @@ Complément au socle : [plan 04b — moteur réel VGC-Bench](plans/2026-10-31-04
 
 État moteur (plan 04b) : subprocess JSONL, bridge `engine-runtime/` (`fixture` CI + `vgc_real` si deps), phases **A–D** sur combats Showdown+BC quand `POKECOACH_ENGINE=vgc_bench`. Clôture : [cloture-04b.md](recettes/cloture-04b.md). Recette : [moteur-reel.md](recettes/moteur-reel.md), audit : [audits/vgc-bench.md](audits/vgc-bench.md).
 
-Pour reprendre le développement actuel : valider 04b avec un run réel A→D (checkpoint + Showdown), puis réaliser E. La [spécification du workflow réel](specs/2026-10-31-workflow-analyse-matchup.md) définit le contrat commun. Ne pas continuer un run créé avec le stub en basculant simplement le `.env` vers le moteur réel.
+Pour reprendre le développement actuel : valider 04b avec un run réel A→D (checkpoint + Showdown), puis appliquer le plan 11 ci-dessus avant de réaliser E. La [spécification du workflow réel](specs/2026-10-31-workflow-analyse-matchup.md) définit le contrat commun. Ne pas continuer un run créé avec le stub en basculant simplement le `.env` vers le moteur réel.
 
 Après chaque plan A/B/C/D, lancer le process jusqu’à la phase concernée : le même run stocke son résultat partiel, se met en pause et reste consultable après rechargement du frontend. Le plan suivant le continue et l’enrichit sans recalculer ses phases validées. E ajoute uniquement le plan global et la win condition, puis publie le rapport complet.
 

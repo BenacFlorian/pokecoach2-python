@@ -7,7 +7,7 @@ Utilisé par les phases workflow A→D (`workflow/budgets.py`).
 | **A** | Previews valides (leads adverses) |
 | **B** | Simulations tour 1 valides **par lead** listé en A |
 | **C** | Parties complètes valides **par lead adverse étudié** (top 2–3 de A) |
-| **D** | Parties complètes ciblées (config figée), **total** sur le run |
+| **D** | Parties complètes valides **total** sur le run (évaluation globale, scénarios A/B) |
 
 Profils : `standard` (charge réelle), `smoke` (tests rapides).
 Spec : `docs/specs/2026-10-31-workflow-analyse-matchup.md`.

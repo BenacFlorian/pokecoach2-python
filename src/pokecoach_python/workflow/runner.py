@@ -72,7 +72,15 @@ class WorkflowRunner:
             completed = list(row.partial_result.get("completedPhases") or [])
             pending = _phases_to_run(completed, row.target_phase)
             if not pending:
+                logger.info("run %s: nothing to do (target=%s completed=%s)", run_id, row.target_phase, completed)
                 return
+            logger.info(
+                "run %s: phases %s (target=%s profile=%s)",
+                run_id,
+                pending,
+                row.target_phase,
+                row.parameters.get("profile", "standard"),
+            )
             profile = str(row.parameters.get("profile", "standard"))
             seed = _parse_seed(row.parameters)
             accumulated_partial = dict(row.partial_result)
@@ -92,6 +100,7 @@ class WorkflowRunner:
                 if handler is None:
                     if not completed:
                         raise RuntimeError(f"phase {phase} not implemented")
+                    logger.info("run %s: pausing — phase %s not implemented", run_id, phase)
                     self._repo.pause_for_implementation(run_id, token)
                     break
                 battle_phase = phase if phase in ("C", "D") else "C"
@@ -143,6 +152,13 @@ class WorkflowRunner:
                     list_battles=_list_battles if battle_phase in ("C", "D") else None,
                 )
                 output = handler(ctx)
+                logger.info(
+                    "run %s: phase %s done (pause=%s defer=%s)",
+                    run_id,
+                    output.phase,
+                    _should_pause_after_phase(output.phase, row.target_phase, remaining),
+                    _defer_publish_after_phase(output.phase, remaining),
+                )
                 if _defer_publish_after_phase(output.phase, remaining):
                     accumulated_partial = output.result.model_dump(mode="json")
                     continue

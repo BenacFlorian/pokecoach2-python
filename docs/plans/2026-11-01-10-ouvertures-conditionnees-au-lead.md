@@ -12,6 +12,8 @@
 
 **Spec:** Décision utilisateur du 1er novembre 2026 et [workflow existant](../specs/2026-10-31-workflow-analyse-matchup.md). Le présent plan remplace ses choix concernant l’ordre des phases et l’origine des recommandations T1. Le [plan frontend associé](../../../pokecoach2-angular/docs/plans/2026-11-01-05-ouvertures-conditionnees-lead-pick.md) consomme le contrat défini ici.
 
+> **Phase D :** la tâche D de ce plan (scénario unique) est **remplacée** par [plan 11 — évaluation globale](2026-11-01-11-phase-d-affinage-global.md).
+
 ## Décisions métier
 
 | Phase | Rôle dans le nouveau workflow | Résultat disponible |

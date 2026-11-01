@@ -105,8 +105,25 @@
   },
   "refinement": {
     "configuration": {"ourFourSlots": [0, 1, 4, 5], "ourLeadSlots": [0, 1]},
+    "samplingPolicy": "weighted-ab",
+    "samplingScope": "all-observed-leads",
     "sampleSize": 2,
     "outcomes": {"wins": 1, "losses": 1, "draws": 0},
+    "scenarioCounts": [
+      {
+        "opponentLeadId": "lead-0-1",
+        "opponentLeadSlots": [0, 1],
+        "opponentBackPair": [2, 3],
+        "count": 1
+      },
+      {
+        "opponentLeadId": "lead-2-3",
+        "opponentLeadSlots": [2, 3],
+        "opponentBackPair": [0, 4],
+        "count": 1
+      }
+    ],
+    "firstTurnSampleSize": 0,
     "firstTurns": [],
     "battleIds": ["b1", "b2"],
     "limitations": []

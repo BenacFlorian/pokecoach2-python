@@ -44,16 +44,26 @@ class WorkerSupervisor:
             if claim is None:
                 time.sleep(POLL_IDLE_SECONDS)
                 continue
+            run_id = claim.context_row.id
+            matchup_id = claim.context_row.matchup_id
+            target = claim.context_row.target_phase
+            logger.info(
+                "claimed run %s matchup=%s target=%s completed=%s",
+                run_id,
+                matchup_id,
+                target,
+                claim.context_row.partial_result.get("completedPhases") or [],
+            )
             reset_settings_cache()
             self._settings = get_settings()
             self._repo = AnalysisRepository(self._engine, self._settings)
             self._runner = WorkflowRunner(self._repo, self._settings)
             logger.info(
-                "processing run with POKECOACH_ENGINE=%s checkpoint=%s",
+                "processing run %s engine=%s checkpoint=%s",
+                run_id,
                 self._settings.engine_mode,
                 self._settings.vgc_checkpoint_path or "(none)",
             )
-            run_id = claim.context_row.id
             token = claim.lease_token
             self._active = (run_id, token)
             last_beat = time.monotonic()
@@ -79,6 +89,8 @@ class WorkerSupervisor:
                             break
                         last_beat = time.monotonic()
                 worker_thread.join(timeout=5)
+                if done.is_set():
+                    logger.info("finished run %s", run_id)
             finally:
                 self._active = None
         logger.info("worker stopped")

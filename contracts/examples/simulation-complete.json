@@ -31,10 +31,21 @@
   },
   "refinement": {
     "configuration": { "ourFourSlots": [0, 1, 2, 3], "ourLeadSlots": [0, 1] },
-    "sampleSize": 10,
-    "outcomes": { "wins": 4, "losses": 5, "draws": 1 },
+    "samplingPolicy": "weighted-ab",
+    "samplingScope": "all-observed-leads",
+    "sampleSize": 2,
+    "outcomes": { "wins": 1, "losses": 1, "draws": 0 },
+    "scenarioCounts": [
+      {
+        "opponentLeadId": "lead-0-1",
+        "opponentLeadSlots": [0, 1],
+        "opponentBackPair": [2, 3],
+        "count": 2
+      }
+    ],
+    "firstTurnSampleSize": 0,
     "firstTurns": [],
-    "battleIds": [],
+    "battleIds": ["d1", "d2"],
     "limitations": []
   },
   "gameplan": {

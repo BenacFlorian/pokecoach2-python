@@ -141,7 +141,11 @@ Le résultat est un candidat empirique avec ses limites, pas un optimum démontr
 
 **Sortie :** notre quatre et notre lead retenus, tableau des candidats observés, taux et effectifs, couverture des leads, tendances et premiers tours associés. Les fréquences A hors top restent visibles dans le rapport.
 
-## 7. Phase D — Observation ciblée du plan retenu
+## 7. Phase D — Évaluation globale de notre sélection
+
+> **Mise à jour novembre 2026 :** voir [plan 11](../plans/2026-11-01-11-phase-d-affinage-global.md). D joue **N combats complets** (budget total 2 en standard/smoke actuel) avec **notre sélection C fixe** et des scénarios adverses tirés sur **tous les leads de A** (poids positifs) et les backs **B** conditionnels. Le bloc `refinement` expose issues, histogramme des scénarios réellement joués et premiers tours observés (dénominateur M ≤ N). Les sections A/C/B restent immuables à la publication.
+
+Le texte ci-dessous décrit l’**ancienne** observation ciblée (lead #1 + back modal) ; il ne reflète plus le comportement implémenté après le plan 11.
 
 Avec notre quatre et notre lead sélectionnés, retenir une configuration adverse : un lead étudié et son back le plus fréquent en B. Proposition de défaut : le lead le plus fréquent de A parmi ceux étudiés en C ; départager les backs ex æquo par leurs slots.
 

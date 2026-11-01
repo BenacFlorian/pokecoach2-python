@@ -103,6 +103,9 @@ class FixtureRuntime:
         if digest[0] == 0:
             raise ValueError("simulated battle rejection")
         our_four, our_lead = _resolve_our_lineup(payload, seed, our)
+        opponent_back: tuple[int, int] | None = None
+        if payload.get("opponentBackPair"):
+            opponent_back = _back_pair(opp_lead, digest[3])
         outcome_roll = digest[8] % 10
         if outcome_roll == 0:
             outcome: Literal["win", "loss", "draw"] = "draw"
@@ -122,6 +125,7 @@ class FixtureRuntime:
             seed=seed,
             engine="fixture-bridge",
             payload=payload,
+            opponent_back_pair=opponent_back,
         )
 
 
@@ -274,11 +278,11 @@ def _resolve_our_lineup(
     sel = payload.get("ourSelection")
     lead_raw = payload.get("ourLeadSlots")
     if sel and len(sel) == 4:
-        four = tuple(sorted(int(s) for s in sel))  # type: ignore[return-value]
+        four = tuple(int(s) for s in sel)
+        if len(set(four)) != 4:
+            raise ValueError("ourSelection must contain four distinct slots")
         if lead_raw and len(lead_raw) == 2:
             lead = (int(lead_raw[0]), int(lead_raw[1]))
-            if lead[0] > lead[1]:
-                lead = (lead[1], lead[0])
             return four, lead
     digest = _digest(f"lineup:{seed}", our, our)
     picked: list[int] = []

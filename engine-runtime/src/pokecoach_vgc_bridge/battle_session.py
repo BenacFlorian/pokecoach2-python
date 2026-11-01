@@ -104,6 +104,38 @@ def _validate_lead_slots(lead: tuple[int, int]) -> tuple[int, int]:
     return (a, b)
 
 
+def _validate_imposed_four(four: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    if len(set(four)) != 4:
+        raise ValueError(f"invalid imposed four {four}")
+    for slot in four:
+        if not (0 <= slot <= 5):
+            raise ValueError(f"invalid imposed four slot {slot}")
+    return four
+
+
+def _teampreview_with_imposed_four(four: tuple[int, int, int, int]) -> str:
+    validated = _validate_imposed_four(four)
+    return "/team " + "".join(str(slot + 1) for slot in validated)
+
+
+def _teampreview_with_imposed_four_on_battle(
+    player: Any,
+    battle: Any,
+    imposed_four: tuple[int, int, int, int],
+) -> str:
+    """Fix all four slots in /team and mark teampreview selection like imposed lead path."""
+    from poke_env.battle import DoubleBattle
+
+    four = _validate_imposed_four(imposed_four)
+    if not isinstance(battle, DoubleBattle):
+        raise RuntimeError("IMPOSED_FOUR_REQUIRES_DOUBLE_BATTLE")
+    team = list(battle.team.values())
+    for slot in four:
+        team[slot]._selected_in_teampreview = True
+    _ = player
+    return _teampreview_with_imposed_four(four)
+
+
 def _preview_slots_from_team_command(choice: str) -> tuple[int, ...] | None:
     if not isinstance(choice, str) or not choice.startswith("/team "):
         return None
@@ -135,6 +167,8 @@ async def create_policy_pair(
     seed: int,
     our_imposed_lead: tuple[int, int] | None = None,
     opponent_imposed_lead: tuple[int, int] | None = None,
+    our_imposed_four: tuple[int, int, int, int] | None = None,
+    opponent_imposed_four: tuple[int, int, int, int] | None = None,
 ) -> tuple[Any, Any]:
     deps = _require_vgc_bench()
     await ensure_showdown_available_async()
@@ -152,8 +186,11 @@ async def create_policy_pair(
 
     class RecordingPolicyPlayer(deps["PolicyPlayer"]):
         def teampreview(self, battle: Any):
+            imposed_four = getattr(self, "pokecoach_imposed_four", None)
             imposed = getattr(self, "pokecoach_imposed_lead", None)
-            if imposed is None:
+            if imposed_four is not None:
+                choice = _teampreview_with_imposed_four_on_battle(self, battle, imposed_four)
+            elif imposed is None:
                 choice = super().teampreview(battle)
             else:
                 choice = _teampreview_with_imposed_lead(self, battle, imposed)
@@ -191,13 +228,29 @@ async def create_policy_pair(
     device = deps["torch"].device("cpu")
     p1.set_policy(checkpoint_path, device)
     p2.set_policy(checkpoint_path, device)
+    p1.pokecoach_imposed_four = (
+        _validate_imposed_four(our_imposed_four) if our_imposed_four is not None else None
+    )
+    p2.pokecoach_imposed_four = (
+        _validate_imposed_four(opponent_imposed_four)
+        if opponent_imposed_four is not None
+        else None
+    )
     p1.pokecoach_imposed_lead = (
-        _validate_lead_slots(our_imposed_lead) if our_imposed_lead is not None else None
+        None
+        if p1.pokecoach_imposed_four is not None
+        else (
+            _validate_lead_slots(our_imposed_lead) if our_imposed_lead is not None else None
+        )
     )
     p2.pokecoach_imposed_lead = (
-        _validate_lead_slots(opponent_imposed_lead)
-        if opponent_imposed_lead is not None
-        else None
+        None
+        if p2.pokecoach_imposed_four is not None
+        else (
+            _validate_lead_slots(opponent_imposed_lead)
+            if opponent_imposed_lead is not None
+            else None
+        )
     )
     _start_ps_listening(p1)
     _start_ps_listening(p2)

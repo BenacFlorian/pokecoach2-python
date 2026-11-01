@@ -1,5 +1,7 @@
 # Phase D — Combats ciblés et affinage visible
 
+> **Remplacé par** [plan 11 — évaluation globale](2026-11-01-11-phase-d-affinage-global.md) (novembre 2026). Ce document reste une trace de l’approche « un seul lead + back modal ».
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Observer notre sélection C contre un lead/back adverse précis et ajouter ces résultats au frontend avant toute synthèse LLM.

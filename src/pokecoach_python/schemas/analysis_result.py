@@ -89,13 +89,56 @@ class OpeningsSection(StrictModel):
     byOpponentLead: list[OpeningStudyEntry]
 
 
+class RefinementScenarioCount(StrictModel):
+    opponentLeadId: str
+    opponentLeadSlots: tuple[int, int]
+    opponentBackPair: tuple[int, int]
+    count: int = Field(ge=1)
+
+
 class RefinementSection(StrictModel):
     configuration: LeadSelection
-    sampleSize: int = Field(ge=0)
+    samplingPolicy: Literal["weighted-ab"]
+    samplingScope: Literal["all-observed-leads"]
+    sampleSize: int = Field(ge=1)
     outcomes: dict[str, int]
+    scenarioCounts: list[RefinementScenarioCount]
+    firstTurnSampleSize: int = Field(ge=0)
     firstTurns: list[Any]
     battleIds: list[str]
     limitations: list[str]
+
+    @model_validator(mode="after")
+    def validate_refinement(self) -> RefinementSection:
+        wins = int(self.outcomes.get("wins", -1))
+        losses = int(self.outcomes.get("losses", -1))
+        draws = int(self.outcomes.get("draws", -1))
+        if min(wins, losses, draws) < 0:
+            raise ValueError("outcomes require non-negative wins, losses, draws")
+        if wins + losses + draws != self.sampleSize:
+            raise ValueError("outcomes must sum to sampleSize")
+        if len(self.battleIds) != self.sampleSize:
+            raise ValueError("battleIds length must equal sampleSize")
+        if len(set(self.battleIds)) != len(self.battleIds):
+            raise ValueError("battleIds must be unique")
+        scenario_total = sum(row.count for row in self.scenarioCounts)
+        if scenario_total != self.sampleSize:
+            raise ValueError("scenarioCounts must sum to sampleSize")
+        ft_total = sum(
+            int(row.get("count", 0))
+            for row in self.firstTurns
+            if isinstance(row, dict)
+        )
+        if self.firstTurnSampleSize == 0:
+            if self.firstTurns:
+                raise ValueError("firstTurns must be empty when firstTurnSampleSize is 0")
+        else:
+            if ft_total != self.firstTurnSampleSize:
+                raise ValueError("firstTurns counts must sum to firstTurnSampleSize")
+            for row in self.firstTurns:
+                if isinstance(row, dict) and row.get("sampleSize") != self.firstTurnSampleSize:
+                    raise ValueError("each firstTurn row sampleSize must equal firstTurnSampleSize")
+        return self
 
 
 class GameplanSection(StrictModel):

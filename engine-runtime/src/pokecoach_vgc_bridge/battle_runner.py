@@ -244,19 +244,47 @@ async def _run_full_battle(
 
     imposed = _canonical_lead(opponent_lead)
     our_lead_raw = payload.get("ourLeadSlots")
-    our_imposed = (
-        (int(our_lead_raw[0]), int(our_lead_raw[1]))
-        if our_lead_raw and len(our_lead_raw) == 2
-        else None
-    )
+    our_sel_raw = payload.get("ourSelection")
+    opp_back_raw = payload.get("opponentBackPair")
+
+    our_imposed_four: tuple[int, int, int, int] | None = None
+    our_imposed_lead: tuple[int, int] | None = None
+    opponent_imposed_four: tuple[int, int, int, int] | None = None
+
+    if isinstance(our_sel_raw, list) and len(our_sel_raw) == 4:
+        our_imposed_four = tuple(int(s) for s in our_sel_raw)  # type: ignore[assignment]
+        if len(set(our_imposed_four)) != 4:
+            raise ValueError("ourSelection must contain four distinct slots")
+        if our_lead_raw and len(our_lead_raw) == 2:
+            our_imposed_lead = (int(our_lead_raw[0]), int(our_lead_raw[1]))
+            if our_imposed_lead[0] not in our_imposed_four or our_imposed_lead[1] not in our_imposed_four:
+                raise ValueError("ourLeadSlots must be within ourSelection")
+    elif our_lead_raw and len(our_lead_raw) == 2:
+        our_imposed_lead = (int(our_lead_raw[0]), int(our_lead_raw[1]))
+
+    if isinstance(opp_back_raw, list) and len(opp_back_raw) == 2:
+        back_a, back_b = int(opp_back_raw[0]), int(opp_back_raw[1])
+        if back_a == back_b:
+            raise ValueError("invalid opponentBackPair")
+        if back_a in opponent_lead or back_b in opponent_lead:
+            raise ValueError("opponentBackPair must be disjoint from opponent lead")
+        opponent_imposed_four = (
+            opponent_lead[0],
+            opponent_lead[1],
+            back_a,
+            back_b,
+        )
+
     p1, p2 = await create_policy_pair(
         checkpoint_path=checkpoint_path,
         our_snapshot=our_snapshot,
         opponent_snapshot=opponent_snapshot,
         regulation=regulation,
         seed=seed,
-        our_imposed_lead=our_imposed,
-        opponent_imposed_lead=imposed,
+        our_imposed_lead=our_imposed_lead,
+        opponent_imposed_lead=imposed if opponent_imposed_four is None else None,
+        our_imposed_four=our_imposed_four,
+        opponent_imposed_four=opponent_imposed_four,
     )
     await p1.battle_against(p2, n_battles=1)
     if not p1.battles:
@@ -264,17 +292,32 @@ async def _run_full_battle(
     battle = next(iter(p1.battles.values()))
     if not getattr(battle, "finished", False):
         raise RuntimeError("BATTLE_NOT_TERMINAL: simulator did not report finished")
-    our_four, our_lead = _resolve_our_lineup(payload, seed, our_snapshot)
-    preview_four = _four_from_preview_slots(p1)
-    preview_lead = _lead_from_preview_slots(p1)
-    if preview_four is not None:
-        our_four = preview_four
-    if preview_lead is not None:
-        our_lead = preview_lead
-    opp_four = _four_from_preview_slots(p2)
-    opp_back = (
-        _back_pair_from_preview_four(opp_four) if opp_four is not None else None
-    )
+
+    our_four_obs = _four_from_preview_slots(p1)
+    opp_four_obs = _four_from_preview_slots(p2)
+    if our_four_obs is None or opp_four_obs is None:
+        raise RuntimeError("PREVIEW_SLOTS_MISSING: bring-4 not recorded from preview")
+
+    if our_imposed_four is not None:
+        if our_four_obs != our_imposed_four:
+            raise ValueError("observed our bring-4 mismatch")
+        our_four = our_four_obs
+        our_lead = (our_four_obs[0], our_four_obs[1])
+    else:
+        our_four = our_four_obs
+        preview_lead = _lead_from_preview_slots(p1)
+        if preview_lead is not None:
+            our_lead = preview_lead
+        else:
+            _, our_lead = _resolve_our_lineup(payload, seed, our_snapshot)
+
+    if opponent_imposed_four is not None:
+        if opp_four_obs != opponent_imposed_four:
+            raise ValueError("observed opponent bring-4 mismatch")
+        if _canonical_lead((opp_four_obs[0], opp_four_obs[1])) != imposed:
+            raise ValueError("simulated lead rejection")
+
+    opp_back = _back_pair_from_preview_four(opp_four_obs)
     turn1 = extract_turn_one_payload(
         battle,
         our_snapshot=our_snapshot,
@@ -282,24 +325,18 @@ async def _run_full_battle(
         opponent_lead=imposed,
         our_lead=our_lead,
         opponent_back_pair=opp_back,
-        opponent_lead_order=(
-            (opp_four[0], opp_four[1]) if opp_four is not None else imposed
-        ),
-        opponent_active_roster=opp_four,
-        our_active_roster=preview_four if preview_four is not None else our_four,
+        opponent_lead_order=(opp_four_obs[0], opp_four_obs[1]),
+        opponent_active_roster=opp_four_obs,
+        our_active_roster=our_four,
     )
-    our_lead_order = (
-        (preview_four[0], preview_four[1]) if preview_four is not None else our_lead
-    )
-    our_roster = preview_four if preview_four is not None else our_four
-    opp_roster = opp_four
+    our_lead_order = (our_four[0], our_four[1])
     our_actions = _actions_for_side(
         battle,
         side="ours",
         lead_order=our_lead_order,
-        active_roster=our_roster,
-        our_active_roster=our_roster,
-        opp_active_roster=opp_roster,
+        active_roster=our_four,
+        our_active_roster=our_four,
+        opp_active_roster=opp_four_obs,
     )
     if p1.n_won_battles > 0:
         outcome = "win"
@@ -320,6 +357,7 @@ async def _run_full_battle(
         seed=seed,
         engine="vgc-bench",
         payload=payload,
+        opponent_back_pair=opp_back,
     )
     meta = dict(record.get("meta") or {})
     meta["terminalEvidence"] = {"kind": "simulator", "turnCount": turn_count, "finished": True}
