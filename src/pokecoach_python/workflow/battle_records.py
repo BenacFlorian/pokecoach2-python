@@ -142,6 +142,8 @@ def validate_real_engine_battle(
             raise ValueError("engine meta mismatch")
     if not meta.get("terminalEvidence"):
         raise ValueError("real battle requires terminalEvidence")
+    if not isinstance(meta.get("terminalState"), dict):
+        raise ValueError("real battle requires terminalState for synthesis eligibility")
     turn_numbers = [t.get("turn") for t in record.turns if isinstance(t, dict)]
     if turn_numbers and turn_numbers[0] != 1:
         raise ValueError("first stored turn must be turn 1")

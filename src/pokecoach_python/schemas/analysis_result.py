@@ -20,6 +20,11 @@ class PokemonRef(StrictModel):
     slot: int = Field(ge=0, le=5)
 
 
+class PokemonHighlight(StrictModel):
+    pokemon: PokemonRef
+    explanation: str = Field(min_length=1, max_length=700)
+
+
 class OpponentLeadEntry(StrictModel):
     id: str
     slots: tuple[int, int]
@@ -142,20 +147,40 @@ class RefinementSection(StrictModel):
 
 
 class GameplanSection(StrictModel):
-    opening: str
-    midgame: str
-    endgame: str
-    threats: list[Any]
-    preserve: list[str]
-    eliminate: list[str]
-    adaptations: list[str]
-    evidenceBattleIds: list[str]
+    opening: str = Field(min_length=1, max_length=700)
+    midgame: str = Field(min_length=1, max_length=700)
+    endgame: str = Field(min_length=1, max_length=700)
+    threats: list[PokemonHighlight] = Field(min_length=1, max_length=2)
+    strengths: list[PokemonHighlight] = Field(min_length=1, max_length=2)
+    evidenceBattleIds: list[str] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_gameplan(self) -> GameplanSection:
+        if len(set(self.evidenceBattleIds)) != len(self.evidenceBattleIds):
+            raise ValueError("gameplan evidenceBattleIds must be unique")
+        threat_refs = {(item.pokemon.side, item.pokemon.slot) for item in self.threats}
+        strength_refs = {(item.pokemon.side, item.pokemon.slot) for item in self.strengths}
+        if len(threat_refs) != len(self.threats):
+            raise ValueError("gameplan threats must reference distinct pokemon")
+        if len(strength_refs) != len(self.strengths):
+            raise ValueError("gameplan strengths must reference distinct pokemon")
+        if any(item.pokemon.side != "opponent" for item in self.threats):
+            raise ValueError("gameplan threats must reference opponent pokemon")
+        if any(item.pokemon.side != "ours" for item in self.strengths):
+            raise ValueError("gameplan strengths must reference our pokemon")
+        return self
 
 
 class WinConditionSection(StrictModel):
-    description: str
-    rationale: str
-    evidenceBattleIds: list[str]
+    description: str = Field(min_length=1, max_length=1000)
+    rationale: str = Field(min_length=1, max_length=1000)
+    evidenceBattleIds: list[str] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_win_condition(self) -> WinConditionSection:
+        if len(set(self.evidenceBattleIds)) != len(self.evidenceBattleIds):
+            raise ValueError("winCondition evidenceBattleIds must be unique")
+        return self
 
 
 class SimulationResultV2(StrictModel):

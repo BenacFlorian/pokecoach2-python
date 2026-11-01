@@ -15,7 +15,7 @@ from sqlmodel import Session
 
 from pokecoach_python.core.config import Settings
 from pokecoach_python.db.analysis_repository import AnalysisRepository
-from pokecoach_python.engine.capabilities import engine_supported_phases
+from pokecoach_python.engine.capabilities import engine_supported_phases, synthesis_available
 from pokecoach_python.engine.factory import build_engine_adapter
 from pokecoach_python.workflow.registry import phase_order
 from pokecoach_python.schemas.analysis_commands import (
@@ -47,6 +47,7 @@ def _repo(session: Session, settings: Settings) -> AnalysisRepository:
 def analysis_capabilities(settings: Settings) -> AnalysisCapabilitiesResponse:
     phases_config = settings.analysis_deployed_phase_list()
     regulations = settings.analysis_regulation_list()
+    synth_available = synthesis_available(settings)
     if not phases_config or not regulations:
         raise HTTPException(
             status_code=503,
@@ -56,15 +57,25 @@ def analysis_capabilities(settings: Settings) -> AnalysisCapabilitiesResponse:
             },
         )
     if settings.engine_mode.lower() == "vgc_bench" and not settings.vgc_checkpoint_path:
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "code": "ENGINE_UNAVAILABLE",
-                "message": "Checkpoint VGC non configuré (VGC_CHECKPOINT_PATH).",
-            },
+        if not synth_available:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "ENGINE_UNAVAILABLE",
+                    "message": "Checkpoint VGC non configuré (VGC_CHECKPOINT_PATH).",
+                },
+            )
+        return AnalysisCapabilitiesResponse(
+            phases=[],
+            phase_order=[],
+            profiles=list(_DEPLOYED_PROFILES),
+            regulations=regulations,
+            synthesis_available=True,
         )
-    engine = build_engine_adapter(settings)
+    phases: list[str] = []
+    engine = None
     try:
+        engine = build_engine_adapter(settings)
         engine.hello()
         if settings.engine_mode.lower() == "stub":
             engine.preflight(
@@ -74,16 +85,19 @@ def analysis_capabilities(settings: Settings) -> AnalysisCapabilitiesResponse:
         phases = engine_supported_phases(engine, settings)
     except Exception as exc:
         logger.error("engine capabilities failed: %s", type(exc).__name__)
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "code": "ENGINE_UNAVAILABLE",
-                "message": "Moteur de simulation indisponible.",
-            },
-        ) from exc
+        if not synth_available:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "ENGINE_UNAVAILABLE",
+                    "message": "Moteur de simulation indisponible.",
+                },
+            ) from exc
+        phases = []
     finally:
-        engine.close()
-    if not phases:
+        if engine is not None:
+            engine.close()
+    if not phases and not synth_available:
         raise HTTPException(
             status_code=503,
             detail={
@@ -97,6 +111,7 @@ def analysis_capabilities(settings: Settings) -> AnalysisCapabilitiesResponse:
         phase_order=[p for p in execution_order if p in phases],
         profiles=list(_DEPLOYED_PROFILES),
         regulations=regulations,
+        synthesis_available=synth_available,
     )
 
 
@@ -105,6 +120,7 @@ def _request_fingerprint(matchup_id: uuid.UUID, body: AnalysisStartRequest) -> s
         "matchupId": str(matchup_id),
         "targetPhase": body.target_phase,
         "profile": body.profile,
+        "locale": body.locale,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
@@ -281,6 +297,7 @@ def start_analysis(
             target_phase=body.target_phase,  # type: ignore[arg-type]
             profile=body.profile,
             seed=seed,
+            locale=body.locale,
         )
     except DBAPIError as exc:
         logger.error("analysis start insert failed: %s", type(exc).__name__)

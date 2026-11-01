@@ -14,13 +14,13 @@ Nouvelle évolution à implémenter : [plan 11 — phase D, évaluation globale 
 6. [Phase B — Tour 1 et back](plans/2026-10-31-06-phase-b-tour1-back.md) — enrichissement du premier onglet pour chaque lead.
 7. [Phase C — Sélection et premier tour](plans/2026-10-31-07-phase-c-selection.md) — calculs déterministes de « Lead & pick » et stockage des combats complets.
 8. [Phase D — Affinage](plans/2026-10-31-08-phase-d-affinage.md) — configuration ciblée et résultats supplémentaires, sans LLM.
-9. [Phase E — Gameplan et win condition](plans/2026-10-31-09-phase-e-gameplan-llm.md) — LLM sur les seuls combats complets C/D, puis rapport complet.
+9. [Phase E — Synthèse des combats D](plans/2026-10-31-09-phase-e-gameplan-llm.md) — plan révisé : stats sur tous les D, logs sélectionnés à 15 % de victoires / 15 % de défaites / 20 % de parties serrées, graphe LangGraph à deux nœuds, conseils early/mid/endgame, menaces, Pokémon forts et win condition. Aucune simulation supplémentaire en E.
 
 Complément au socle : [plan 04b — moteur réel VGC-Bench](plans/2026-10-31-04b-moteur-reel-vgc-bench.md), à réaliser **avant le plan 09 LLM**. Il raccorde preview, tour 1 et combats complets, puis fait rejouer les recettes B/C/D avec le checkpoint BC.
 
 État moteur (plan 04b) : subprocess JSONL, bridge `engine-runtime/` (`fixture` CI + `vgc_real` si deps), phases **A–D** sur combats Showdown+BC quand `POKECOACH_ENGINE=vgc_bench`. Clôture : [cloture-04b.md](recettes/cloture-04b.md). Recette : [moteur-reel.md](recettes/moteur-reel.md), audit : [audits/vgc-bench.md](audits/vgc-bench.md).
 
-Pour reprendre le développement actuel : valider 04b avec un run réel A→D (checkpoint + Showdown), puis appliquer le plan 11 ci-dessus avant de réaliser E. La [spécification du workflow réel](specs/2026-10-31-workflow-analyse-matchup.md) définit le contrat commun. Ne pas continuer un run créé avec le stub en basculant simplement le `.env` vers le moteur réel.
+Chantier actuel : A–D et la refonte frontend sont validées par l’utilisateur ; implémenter le plan E révisé ci-dessus. Il commence par vérifier et compléter la capture des historiques D, survivants et dégâts nécessaires à ses sources. Les traces limitées au T1 ne sont pas des sources complètes pour E. Le plan E prime sur les passages historiques C/D de la [spécification du workflow réel](specs/2026-10-31-workflow-analyse-matchup.md), à aligner lors de son implémentation. Ne pas continuer un run créé avec le stub en basculant simplement le `.env` vers le moteur réel.
 
 Après chaque plan A/B/C/D, lancer le process jusqu’à la phase concernée : le même run stocke son résultat partiel, se met en pause et reste consultable après rechargement du frontend. Le plan suivant le continue et l’enrichit sans recalculer ses phases validées. E ajoute uniquement le plan global et la win condition, puis publie le rapport complet.
 

@@ -3,21 +3,9 @@
     "GameplanSection": {
       "additionalProperties": false,
       "properties": {
-        "adaptations": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Adaptations",
-          "type": "array"
-        },
-        "eliminate": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Eliminate",
-          "type": "array"
-        },
         "endgame": {
+          "maxLength": 700,
+          "minLength": 1,
           "title": "Endgame",
           "type": "string"
         },
@@ -25,26 +13,37 @@
           "items": {
             "type": "string"
           },
+          "minItems": 1,
           "title": "Evidencebattleids",
           "type": "array"
         },
         "midgame": {
+          "maxLength": 700,
+          "minLength": 1,
           "title": "Midgame",
           "type": "string"
         },
         "opening": {
+          "maxLength": 700,
+          "minLength": 1,
           "title": "Opening",
           "type": "string"
         },
-        "preserve": {
+        "strengths": {
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/PokemonHighlight"
           },
-          "title": "Preserve",
+          "maxItems": 2,
+          "minItems": 1,
+          "title": "Strengths",
           "type": "array"
         },
         "threats": {
-          "items": {},
+          "items": {
+            "$ref": "#/$defs/PokemonHighlight"
+          },
+          "maxItems": 2,
+          "minItems": 1,
           "title": "Threats",
           "type": "array"
         }
@@ -54,9 +53,7 @@
         "midgame",
         "endgame",
         "threats",
-        "preserve",
-        "eliminate",
-        "adaptations",
+        "strengths",
         "evidenceBattleIds"
       ],
       "title": "GameplanSection",
@@ -68,11 +65,6 @@
         "comparisons": {
           "items": {},
           "title": "Comparisons",
-          "type": "array"
-        },
-        "firstTurns": {
-          "items": {},
-          "title": "Firstturns",
           "type": "array"
         },
         "limitations": {
@@ -93,7 +85,6 @@
       "required": [
         "selection",
         "comparisons",
-        "firstTurns",
         "selectionRuleVersion",
         "limitations"
       ],
@@ -145,6 +136,111 @@
       "title": "LeadSelection",
       "type": "object"
     },
+    "OpeningStudyEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "backPairs": {
+          "items": {},
+          "title": "Backpairs",
+          "type": "array"
+        },
+        "backSlotMarginals": {
+          "items": {},
+          "title": "Backslotmarginals",
+          "type": "array"
+        },
+        "endStateNotes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Endstatenotes",
+          "type": "array"
+        },
+        "opponentActions": {
+          "items": {},
+          "title": "Opponentactions",
+          "type": "array"
+        },
+        "opponentLeadId": {
+          "title": "Opponentleadid",
+          "type": "string"
+        },
+        "opponentLeadSlots": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Opponentleadslots",
+          "type": "array"
+        },
+        "ourActions": {
+          "items": {},
+          "title": "Ouractions",
+          "type": "array"
+        },
+        "recommendation": {
+          "additionalProperties": true,
+          "title": "Recommendation",
+          "type": "object"
+        },
+        "sampleSize": {
+          "minimum": 0,
+          "title": "Samplesize",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "opponentLeadId",
+        "opponentLeadSlots",
+        "sampleSize",
+        "opponentActions",
+        "ourActions",
+        "recommendation",
+        "backPairs",
+        "backSlotMarginals",
+        "endStateNotes"
+      ],
+      "title": "OpeningStudyEntry",
+      "type": "object"
+    },
+    "OpeningsSection": {
+      "additionalProperties": false,
+      "properties": {
+        "byOpponentLead": {
+          "items": {
+            "$ref": "#/$defs/OpeningStudyEntry"
+          },
+          "title": "Byopponentlead",
+          "type": "array"
+        },
+        "recommendationRule": {
+          "const": "model-frequency-v1",
+          "title": "Recommendationrule",
+          "type": "string"
+        },
+        "samplingPolicy": {
+          "title": "Samplingpolicy",
+          "type": "string"
+        },
+        "selection": {
+          "$ref": "#/$defs/LeadSelection"
+        }
+      },
+      "required": [
+        "selection",
+        "recommendationRule",
+        "samplingPolicy",
+        "byOpponentLead"
+      ],
+      "title": "OpeningsSection",
+      "type": "object"
+    },
     "OpponentLeadEntry": {
       "additionalProperties": false,
       "properties": {
@@ -170,17 +266,6 @@
           ],
           "title": "Slots",
           "type": "array"
-        },
-        "turn1": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Turn1Section"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
         }
       },
       "required": [
@@ -212,6 +297,101 @@
         "leads"
       ],
       "title": "OpponentLeadsSection",
+      "type": "object"
+    },
+    "PokemonHighlight": {
+      "additionalProperties": false,
+      "properties": {
+        "explanation": {
+          "maxLength": 700,
+          "minLength": 1,
+          "title": "Explanation",
+          "type": "string"
+        },
+        "pokemon": {
+          "$ref": "#/$defs/PokemonRef"
+        }
+      },
+      "required": [
+        "pokemon",
+        "explanation"
+      ],
+      "title": "PokemonHighlight",
+      "type": "object"
+    },
+    "PokemonRef": {
+      "additionalProperties": false,
+      "properties": {
+        "side": {
+          "enum": [
+            "ours",
+            "opponent"
+          ],
+          "title": "Side",
+          "type": "string"
+        },
+        "slot": {
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Slot",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "side",
+        "slot"
+      ],
+      "title": "PokemonRef",
+      "type": "object"
+    },
+    "RefinementScenarioCount": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        },
+        "opponentBackPair": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Opponentbackpair",
+          "type": "array"
+        },
+        "opponentLeadId": {
+          "title": "Opponentleadid",
+          "type": "string"
+        },
+        "opponentLeadSlots": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Opponentleadslots",
+          "type": "array"
+        }
+      },
+      "required": [
+        "opponentLeadId",
+        "opponentLeadSlots",
+        "opponentBackPair",
+        "count"
+      ],
+      "title": "RefinementScenarioCount",
       "type": "object"
     },
     "RefinementSection": {
@@ -268,39 +448,7 @@
         },
         "scenarioCounts": {
           "items": {
-            "additionalProperties": false,
-            "properties": {
-              "count": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "opponentBackPair": {
-                "items": {
-                  "type": "integer"
-                },
-                "maxItems": 2,
-                "minItems": 2,
-                "type": "array"
-              },
-              "opponentLeadId": {
-                "type": "string"
-              },
-              "opponentLeadSlots": {
-                "items": {
-                  "type": "integer"
-                },
-                "maxItems": 2,
-                "minItems": 2,
-                "type": "array"
-              }
-            },
-            "required": [
-              "opponentLeadId",
-              "opponentLeadSlots",
-              "opponentBackPair",
-              "count"
-            ],
-            "type": "object"
+            "$ref": "#/$defs/RefinementScenarioCount"
           },
           "title": "Scenariocounts",
           "type": "array"
@@ -321,51 +469,12 @@
       "title": "RefinementSection",
       "type": "object"
     },
-    "Turn1Section": {
-      "additionalProperties": false,
-      "properties": {
-        "backPairs": {
-          "items": {},
-          "title": "Backpairs",
-          "type": "array"
-        },
-        "backSlotMarginals": {
-          "items": {},
-          "title": "Backslotmarginals",
-          "type": "array"
-        },
-        "endStateNotes": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Endstatenotes",
-          "type": "array"
-        },
-        "jointActions": {
-          "items": {},
-          "title": "Jointactions",
-          "type": "array"
-        },
-        "sampleSize": {
-          "minimum": 0,
-          "title": "Samplesize",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "sampleSize",
-        "jointActions",
-        "backPairs",
-        "backSlotMarginals",
-        "endStateNotes"
-      ],
-      "title": "Turn1Section",
-      "type": "object"
-    },
     "WinConditionSection": {
       "additionalProperties": false,
       "properties": {
         "description": {
+          "maxLength": 1000,
+          "minLength": 1,
           "title": "Description",
           "type": "string"
         },
@@ -373,10 +482,13 @@
           "items": {
             "type": "string"
           },
+          "minItems": 1,
           "title": "Evidencebattleids",
           "type": "array"
         },
         "rationale": {
+          "maxLength": 1000,
+          "minLength": 1,
           "title": "Rationale",
           "type": "string"
         }
@@ -420,6 +532,16 @@
       "anyOf": [
         {
           "$ref": "#/$defs/LeadPickSection"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "openings": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OpeningsSection"
         },
         {
           "type": "null"
@@ -473,6 +595,7 @@
     "completedPhases",
     "opponentLeads",
     "leadPick",
+    "openings",
     "refinement",
     "gameplan",
     "winCondition"

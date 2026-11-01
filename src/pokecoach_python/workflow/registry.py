@@ -7,6 +7,7 @@ from pokecoach_python.workflow.phases.phase_a import run_phase_a
 from pokecoach_python.workflow.phases.phase_b import run_phase_b
 from pokecoach_python.workflow.phases.phase_c import run_phase_c
 from pokecoach_python.workflow.phases.phase_d import run_phase_d
+from pokecoach_python.workflow.phases.phase_e import run_phase_e
 from pokecoach_python.workflow.types import PhaseHandler
 
 _HANDLERS: dict[Phase, PhaseHandler] = {
@@ -14,6 +15,7 @@ _HANDLERS: dict[Phase, PhaseHandler] = {
     "C": run_phase_c,
     "B": run_phase_b,
     "D": run_phase_d,
+    "synthesis": run_phase_e,
 }
 
 

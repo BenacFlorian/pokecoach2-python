@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "source": "simulation",
-  "completedPhases": ["A", "B", "C", "D", "synthesis"],
+  "completedPhases": ["A", "C", "B", "D", "synthesis"],
   "opponentLeads": {
     "sampleSize": 100,
     "leads": [
@@ -52,15 +52,23 @@
     "opening": "Press speed advantage.",
     "midgame": "Trade into their restricted.",
     "endgame": "Close with priority.",
-    "threats": [],
-    "preserve": [],
-    "eliminate": [],
-    "adaptations": [],
-    "evidenceBattleIds": []
+    "threats": [
+      {
+        "pokemon": {"side": "opponent", "slot": 0},
+        "explanation": "This slot dictated the tempo in the observed losses."
+      }
+    ],
+    "strengths": [
+      {
+        "pokemon": {"side": "ours", "slot": 0},
+        "explanation": "This slot consistently created the winning endgames."
+      }
+    ],
+    "evidenceBattleIds": ["d1"]
   },
   "winCondition": {
     "description": "Remove their sweeper after turn 2.",
     "rationale": "Observed in sample battles.",
-    "evidenceBattleIds": []
+    "evidenceBattleIds": ["d1"]
   }
 }

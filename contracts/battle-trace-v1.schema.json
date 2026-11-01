@@ -8,6 +8,9 @@
     "traceVersion": { "type": "integer", "const": 1 },
     "requests": { "type": "array" },
     "choices": { "type": "array" },
-    "events": { "type": "array" }
+    "events": {
+      "type": "array",
+      "description": "Ordered battle events (damage, KO, switches) with turn numbers"
+    }
   }
 }

@@ -24,3 +24,7 @@ def engine_supported_phases(engine: EngineAdapter, settings: Settings) -> list[s
     if "C" not in allowed:
         allowed.discard("B")
     return [p for p in execution_order if p in configured and p in allowed]
+
+
+def synthesis_available(settings: Settings) -> bool:
+    return settings.synthesis_enabled()

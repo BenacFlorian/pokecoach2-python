@@ -74,6 +74,14 @@ class Settings(BaseSettings):
         alias="REGULATION_SHOWDOWN_MAP",
         default='{"M-B":"gen9championsvgc2026regmb","M-A":"gen9championsvgc2026regma"}',
     )
+    llm_model: str = Field(
+        alias="LLM_MODEL",
+        default="deepseek-ai/DeepSeek-V4.1-Flash-1017",
+    )
+    llm_input_token_budget: int = Field(alias="LLM_INPUT_TOKEN_BUDGET", default=24000)
+    llm_output_token_budget: int = Field(alias="LLM_OUTPUT_TOKEN_BUDGET", default=1200)
+    llm_timeout_seconds: float = Field(alias="LLM_TIMEOUT_SECONDS", default=45.0)
+    deepinfra_api_key: SecretStr | None = Field(alias="DEEPINFRA_API_KEY", default=None)
 
     def analysis_regulation_list(self) -> list[str]:
         return [part.strip() for part in self.analysis_regulations.split(",") if part.strip()]
@@ -93,6 +101,35 @@ class Settings(BaseSettings):
 
     def regulation_showdown_map_json(self) -> str:
         return self.regulation_showdown_map
+
+    def synthesis_enabled(self) -> bool:
+        if "synthesis" not in self.analysis_deployed_phase_list():
+            return False
+        if self.deepinfra_api_key is None:
+            return False
+        return bool(self.deepinfra_api_key.get_secret_value().strip())
+
+    def synthesis_model_name(self) -> str:
+        model = self.llm_model.strip()
+        if not model:
+            raise ValueError("LLM_MODEL must not be empty")
+        return model
+
+    def synthesis_output_token_limit(self) -> int:
+        if self.llm_output_token_budget <= 0:
+            raise ValueError("LLM_OUTPUT_TOKEN_BUDGET must be positive")
+        return self.llm_output_token_budget
+
+    def synthesis_source_token_budget(self, prompt_overhead_tokens: int = 512) -> int:
+        if self.llm_input_token_budget <= 0:
+            raise ValueError("LLM_INPUT_TOKEN_BUDGET must be positive")
+        available = self.llm_input_token_budget - self.synthesis_output_token_limit() - prompt_overhead_tokens
+        if available <= 0:
+            raise ValueError("LLM_INPUT_TOKEN_BUDGET too small for synthesis")
+        return available
+
+    def synthesis_base_url(self) -> str:
+        return "https://api.deepinfra.com/v1/openai"
 
     def regulation_to_showdown_format(self, regulation: str) -> str:
         try:

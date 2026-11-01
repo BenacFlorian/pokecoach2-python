@@ -16,6 +16,7 @@ from sqlmodel import Session
 from pokecoach_python.core.config import Settings
 from pokecoach_python.engine.contracts import BattleRecord
 from pokecoach_python.engine.factory import build_engine_adapter
+from pokecoach_python.llm.battle_sources import StoredDBattle
 from pokecoach_python.schemas.analysis_result import Phase
 from pokecoach_python.workflow.registry import phase_order
 from pokecoach_python.workflow.battle_records import (
@@ -30,6 +31,19 @@ logger = logging.getLogger(__name__)
 
 Operation = Literal["start", "continue", "cancel"]
 LEASE_SECONDS = 60
+
+
+def _deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in patch.items():
+        if (
+            isinstance(value, dict)
+            and isinstance(merged.get(key), dict)
+        ):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
 
 
 def _initial_provenance(settings: Settings) -> dict[str, Any]:
@@ -182,6 +196,7 @@ class AnalysisRepository:
         target_phase: Phase,
         profile: str,
         seed: str,
+        locale: str = "fr",
     ) -> uuid.UUID:
         empty = json.dumps(
             {
@@ -190,6 +205,7 @@ class AnalysisRepository:
                 "completedPhases": [],
                 "opponentLeads": None,
                 "leadPick": None,
+                "openings": None,
                 "refinement": None,
                 "gameplan": None,
                 "winCondition": None,
@@ -201,6 +217,7 @@ class AnalysisRepository:
                 "seed": seed,
                 "checkpoint_id": self._settings.analysis_checkpoint_id,
                 "requestedTargetPhase": target_phase,
+                "locale": locale if locale in ("fr", "en") else "fr",
             }
         )
         provenance = json.dumps(
@@ -590,6 +607,34 @@ class AnalysisRepository:
             records.append(battle_record_from_payload(payload))
         return records
 
+    def list_d_battles(self, run_id: uuid.UUID) -> list[StoredDBattle]:
+        with Session(self._engine) as session:
+            rows = session.connection().execute(
+                text(
+                    """
+                    SELECT id, sample_key, sha256, payload
+                    FROM core.matchup_run_battles
+                    WHERE run_id = :run_id AND phase = 'D'
+                    ORDER BY sample_key, id
+                    """
+                ),
+                {"run_id": run_id},
+            ).all()
+        records: list[StoredDBattle] = []
+        for row in rows:
+            payload = row[3]
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            records.append(
+                StoredDBattle(
+                    id=str(row[0]),
+                    sample_key=str(row[1]),
+                    sha256=str(row[2]),
+                    record=battle_record_from_payload(payload),
+                )
+            )
+        return records
+
     def pause_for_implementation(
         self,
         run_id: uuid.UUID,
@@ -638,7 +683,6 @@ class AnalysisRepository:
         new_revision = expected_revision + 1
         partial_json = json.dumps(partial_result)
         phase_key = partial_result["completedPhases"][-1]
-        meta_patch = json.dumps({"phases": {phase_key: execution_slice}})
         process = (
             "PENDING GAME SIMULATIONS"
             if phase_key in ("C", "D")
@@ -653,7 +697,7 @@ class AnalysisRepository:
                 row = session.connection().execute(
                     text(
                         """
-                        SELECT result_revision, lease_token, status
+                        SELECT result_revision, lease_token, status, execution_metadata
                         FROM core.matchup_runs
                         WHERE id = :run_id
                         FOR UPDATE
@@ -661,18 +705,22 @@ class AnalysisRepository:
                     ),
                     {"run_id": run_id},
                 ).one()
-                revision, lease, run_status = row[0], row[1], row[2]
+                revision, lease, run_status, execution_metadata = row[0], row[1], row[2], row[3]
                 if run_status != "running" or lease != token:
                     raise RuntimeError("lease lost before publish")
                 if revision != expected_revision:
                     raise RuntimeError("unexpected result revision")
+                merged_meta = _deep_merge(
+                    dict(execution_metadata or {}),
+                    {"phases": {phase_key: execution_slice}},
+                )
                 session.connection().execute(
                     text(
                         """
                         UPDATE core.matchup_runs
                         SET partial_result = CAST(:partial AS jsonb),
                             result_revision = :revision,
-                            execution_metadata = execution_metadata || CAST(:meta AS jsonb),
+                            execution_metadata = CAST(:meta AS jsonb),
                             progress = NULL,
                             status = :status,
                             process_status = :process,
@@ -686,10 +734,154 @@ class AnalysisRepository:
                         "run_id": run_id,
                         "partial": partial_json,
                         "revision": new_revision,
-                        "meta": meta_patch,
+                        "meta": json.dumps(merged_meta),
                         "status": status,
                         "process": process,
                         "pause": pause,
+                    },
+                )
+
+    def load_synthesis_sources(self, run_id: uuid.UUID | str) -> dict[str, Any] | None:
+        with Session(self._engine) as session:
+            row = session.connection().execute(
+                text(
+                    """
+                    SELECT execution_metadata
+                    FROM core.matchup_runs
+                    WHERE id = :run_id
+                    """
+                ),
+                {"run_id": run_id},
+            ).first()
+        if row is None:
+            raise ValueError("run not found")
+        metadata = dict(row[0] or {})
+        synthesis = metadata.get("synthesis") or {}
+        sources = synthesis.get("sources")
+        return dict(sources) if isinstance(sources, dict) else None
+
+    def create_synthesis_sources(
+        self,
+        run_id: uuid.UUID,
+        token: uuid.UUID,
+        *,
+        expected_revision: int,
+        sources_payload: dict[str, Any],
+    ) -> None:
+        self._write_synthesis_sources(
+            run_id,
+            token,
+            expected_revision=expected_revision,
+            sources_payload=sources_payload,
+            require_existing=False,
+        )
+
+    def update_synthesis_sources(
+        self,
+        run_id: uuid.UUID,
+        token: uuid.UUID,
+        *,
+        expected_revision: int,
+        sources_payload: dict[str, Any],
+    ) -> None:
+        self._write_synthesis_sources(
+            run_id,
+            token,
+            expected_revision=expected_revision,
+            sources_payload=sources_payload,
+            require_existing=True,
+        )
+
+    def delete_synthesis_sources(self, run_id: uuid.UUID, token: uuid.UUID) -> None:
+        with Session(self._engine) as session:
+            with session.begin():
+                row = session.connection().execute(
+                    text(
+                        """
+                        SELECT status, lease_token, execution_metadata
+                        FROM core.matchup_runs
+                        WHERE id = :run_id
+                        FOR UPDATE
+                        """
+                    ),
+                    {"run_id": run_id},
+                ).one()
+                status, lease, execution_metadata = row[0], row[1], row[2]
+                if status != "running" or lease != token:
+                    raise RuntimeError("lease lost before deleting synthesis sources")
+                metadata = dict(execution_metadata or {})
+                synthesis = dict(metadata.get("synthesis") or {})
+                if synthesis.get("invocation") is not None:
+                    raise RuntimeError("cannot delete synthesis sources after invocation")
+                synthesis.pop("sources", None)
+                if synthesis:
+                    metadata["synthesis"] = synthesis
+                else:
+                    metadata.pop("synthesis", None)
+                session.connection().execute(
+                    text(
+                        """
+                        UPDATE core.matchup_runs
+                        SET execution_metadata = CAST(:meta AS jsonb)
+                        WHERE id = :run_id
+                        """
+                    ),
+                    {"run_id": run_id, "meta": json.dumps(metadata)},
+                )
+
+    def publish_complete(
+        self,
+        run_id: uuid.UUID,
+        token: uuid.UUID,
+        *,
+        expected_revision: int,
+        result: dict[str, Any],
+        execution_metadata_patch: dict[str, Any],
+    ) -> None:
+        with Session(self._engine) as session:
+            with session.begin():
+                row = session.connection().execute(
+                    text(
+                        """
+                        SELECT result_revision, lease_token, status, execution_metadata, lease_expires_at
+                        FROM core.matchup_runs
+                        WHERE id = :run_id
+                        FOR UPDATE
+                        """
+                    ),
+                    {"run_id": run_id},
+                ).one()
+                revision, lease, status, execution_metadata, lease_expires_at = row
+                if status != "running" or lease != token:
+                    raise RuntimeError("lease lost before final publish")
+                if lease_expires_at is None or lease_expires_at <= datetime.now(UTC):
+                    raise RuntimeError("lease expired before final publish")
+                if revision != expected_revision:
+                    raise RuntimeError("unexpected result revision")
+                merged_meta = _deep_merge(dict(execution_metadata or {}), execution_metadata_patch)
+                session.connection().execute(
+                    text(
+                        """
+                        UPDATE core.matchup_runs
+                        SET partial_result = CAST(:result AS jsonb),
+                            report = CAST(:result AS jsonb),
+                            result_revision = :revision,
+                            execution_metadata = CAST(:meta AS jsonb),
+                            status = 'succeeded',
+                            process_status = 'SUCCESS',
+                            finished_at = now(),
+                            progress = NULL,
+                            lease_token = NULL,
+                            lease_expires_at = NULL,
+                            heartbeat_at = NULL
+                        WHERE id = :run_id
+                        """
+                    ),
+                    {
+                        "run_id": run_id,
+                        "result": json.dumps(result),
+                        "revision": expected_revision + 1,
+                        "meta": json.dumps(merged_meta),
                     },
                 )
 
@@ -786,3 +978,54 @@ class AnalysisRepository:
                 process_status=row[10],
                 provenance=dict(row[11] or {}),
             )
+
+    def _write_synthesis_sources(
+        self,
+        run_id: uuid.UUID,
+        token: uuid.UUID,
+        *,
+        expected_revision: int,
+        sources_payload: dict[str, Any],
+        require_existing: bool,
+    ) -> None:
+        with Session(self._engine) as session:
+            with session.begin():
+                row = session.connection().execute(
+                    text(
+                        """
+                        SELECT status, lease_token, result_revision, execution_metadata
+                        FROM core.matchup_runs
+                        WHERE id = :run_id
+                        FOR UPDATE
+                        """
+                    ),
+                    {"run_id": run_id},
+                ).one()
+                status, lease, revision, execution_metadata = row
+                if status != "running" or lease != token:
+                    raise RuntimeError("lease lost before writing synthesis sources")
+                if revision != expected_revision:
+                    raise RuntimeError("unexpected result revision")
+                metadata = dict(execution_metadata or {})
+                synthesis = dict(metadata.get("synthesis") or {})
+                if synthesis.get("invocation") is not None:
+                    raise RuntimeError("cannot modify synthesis sources after invocation")
+                existing = synthesis.get("sources")
+                if require_existing and existing is None:
+                    raise RuntimeError("synthesis sources do not exist")
+                if not require_existing and existing == sources_payload:
+                    return
+                if not require_existing and existing is not None and existing != sources_payload:
+                    raise RuntimeError("synthesis sources already exist; use update")
+                synthesis["sources"] = sources_payload
+                metadata["synthesis"] = synthesis
+                session.connection().execute(
+                    text(
+                        """
+                        UPDATE core.matchup_runs
+                        SET execution_metadata = CAST(:meta AS jsonb)
+                        WHERE id = :run_id
+                        """
+                    ),
+                    {"run_id": run_id, "meta": json.dumps(metadata)},
+                )

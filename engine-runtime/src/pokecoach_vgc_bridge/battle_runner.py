@@ -347,21 +347,47 @@ async def _run_full_battle(
     else:
         raise RuntimeError("BATTLE_OUTCOME_UNKNOWN: no win/loss/tie recorded")
     turn_count = int(getattr(battle, "turn", 1) or 1)
-    record = build_battle_record(
+    from pokecoach_vgc_bridge.full_battle_trace import (
+        FullBattleTrace,
+        build_turns_from_battle_summary,
+        capture_terminal_state_from_battle,
+        normalize_complete_battle,
+    )
+
+    opponent_selected = opp_four_obs
+    terminal_state = capture_terminal_state_from_battle(
+        battle,
+        our_selected=our_four,
+        opponent_selected=opponent_selected,
+    )
+    turns = build_turns_from_battle_summary(
+        turn_count=turn_count,
+        our_actions_turn1=our_actions,
+        opponent_actions_turn1=turn1["actions"],
+        trace=FullBattleTrace(),
+    )
+    record = normalize_complete_battle(
         opponent_lead=imposed,
         our_lead=our_lead,
         our_four=our_four,
-        our_actions=our_actions,
-        opponent_actions=turn1["actions"],
+        opponent_selected=opponent_selected,
+        our_actions_turn1=our_actions,
+        opponent_actions_turn1=turn1["actions"],
         outcome=outcome,
         seed=seed,
         engine="vgc-bench",
-        payload=payload,
+        turns=turns,
+        terminal_state=terminal_state,
+        terminal_evidence={
+            "kind": "simulator",
+            "turnCount": turn_count,
+            "finished": True,
+            "captureMethod": "poke-env-summary",
+        },
         opponent_back_pair=opp_back,
+        capture_quality={"exactHp": True, "roundedHp": False},
+        engine_fingerprint="vgc-bench",
     )
-    meta = dict(record.get("meta") or {})
-    meta["terminalEvidence"] = {"kind": "simulator", "turnCount": turn_count, "finished": True}
-    record["meta"] = meta
     return record
 
 

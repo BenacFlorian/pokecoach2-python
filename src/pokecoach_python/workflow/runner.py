@@ -16,6 +16,23 @@ from pokecoach_python.workflow.types import PhaseContext
 logger = logging.getLogger(__name__)
 
 
+class _ForbiddenEngine:
+    def preflight(self, *_args, **_kwargs):
+        raise RuntimeError("synthesis phase must not call engine.preflight")
+
+    def preview(self, *_args, **_kwargs):
+        raise RuntimeError("synthesis phase must not call engine.preview")
+
+    def first_turn(self, *_args, **_kwargs):
+        raise RuntimeError("synthesis phase must not call engine.first_turn")
+
+    def full_battle(self, *_args, **_kwargs):
+        raise RuntimeError("synthesis phase must not call engine.full_battle")
+
+    def close(self) -> None:
+        return None
+
+
 def _phases_to_run(completed: list[str], target: Phase) -> list[Phase]:
     order = list(phase_order())
     target_idx = order.index(target)
@@ -66,11 +83,15 @@ class WorkflowRunner:
         row = claim.context_row
         run_id = row.id
         token = claim.lease_token
-        assert_run_engine_compatible(row.provenance, _initial_provenance(self._settings))
-        engine = build_engine_adapter(self._settings)
+        completed = list(row.partial_result.get("completedPhases") or [])
+        pending = _phases_to_run(completed, row.target_phase)
+        requires_engine = any(phase != "synthesis" for phase in pending)
+        if requires_engine:
+            assert_run_engine_compatible(row.provenance, _initial_provenance(self._settings))
+            engine = build_engine_adapter(self._settings)
+        else:
+            engine = _ForbiddenEngine()
         try:
-            completed = list(row.partial_result.get("completedPhases") or [])
-            pending = _phases_to_run(completed, row.target_phase)
             if not pending:
                 logger.info("run %s: nothing to do (target=%s completed=%s)", run_id, row.target_phase, completed)
                 return
@@ -103,7 +124,8 @@ class WorkflowRunner:
                     logger.info("run %s: pausing — phase %s not implemented", run_id, phase)
                     self._repo.pause_for_implementation(run_id, token)
                     break
-                battle_phase = phase if phase in ("C", "D") else "C"
+                battle_phase = phase if phase in ("C", "D") else None
+                read_battle_phase = "D" if phase == "synthesis" else battle_phase
 
                 def _insert_battle(rec: BattleRecord, key: str, bp=battle_phase) -> str:
                     if bp not in ("C", "D"):
@@ -119,10 +141,13 @@ class WorkflowRunner:
                         )
                     )
 
-                def _list_battles(bp=battle_phase) -> list[BattleRecord]:
+                def _list_battles(bp=read_battle_phase) -> list[BattleRecord]:
                     if bp not in ("C", "D"):
                         return []
                     return self._repo.list_battles(run_id, phase=bp)  # type: ignore[arg-type]
+
+                def _list_d_battles():
+                    return self._repo.list_d_battles(run_id)
 
                 ctx = PhaseContext(
                     run_id=run_id,
@@ -149,7 +174,12 @@ class WorkflowRunner:
                     ),
                     engine_mode=self._settings.engine_mode,
                     insert_battle=_insert_battle if battle_phase in ("C", "D") else None,
-                    list_battles=_list_battles if battle_phase in ("C", "D") else None,
+                    list_battles=_list_battles if read_battle_phase in ("C", "D") else None,
+                    list_d_battles=_list_d_battles if phase == "synthesis" else None,
+                    run_provenance=dict(row.provenance),
+                    result_revision=row.result_revision,
+                    settings=self._settings,
+                    analysis_repository=self._repo,
                 )
                 output = handler(ctx)
                 logger.info(
@@ -164,15 +194,28 @@ class WorkflowRunner:
                     continue
                 pause = _should_pause_after_phase(output.phase, row.target_phase, remaining)
                 payload = output.result.model_dump(mode="json")
-                self._repo.publish_phase(
-                    run_id,
-                    token,
-                    expected_revision=row.result_revision,
-                    partial_result=payload,
-                    target_phase=row.target_phase,
-                    execution_slice=output.execution_slice,
-                    pause=pause,
-                )
+                if output.phase == "synthesis":
+                    metadata_patch = (
+                        output.metadata_patch
+                        or {"phases": {"synthesis": output.execution_slice}}
+                    )
+                    self._repo.publish_complete(
+                        run_id,
+                        token,
+                        expected_revision=row.result_revision,
+                        result=payload,
+                        execution_metadata_patch=metadata_patch,
+                    )
+                else:
+                    self._repo.publish_phase(
+                        run_id,
+                        token,
+                        expected_revision=row.result_revision,
+                        partial_result=payload,
+                        target_phase=row.target_phase,
+                        execution_slice=output.execution_slice,
+                        pause=pause,
+                    )
                 accumulated_partial = payload
                 row = self._repo.load_run_row(run_id)
                 if row is None:

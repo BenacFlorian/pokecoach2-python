@@ -37,11 +37,9 @@ def test_rejects_llm_fields_before_synthesis() -> None:
         "opening": "x",
         "midgame": "x",
         "endgame": "x",
-        "threats": [],
-        "preserve": [],
-        "eliminate": [],
-        "adaptations": [],
-        "evidenceBattleIds": [],
+        "threats": [{"pokemon": {"side": "opponent", "slot": 0}, "explanation": "x"}],
+        "strengths": [{"pokemon": {"side": "ours", "slot": 0}, "explanation": "x"}],
+        "evidenceBattleIds": ["b1"],
     }
     with pytest.raises(ValueError):
         validate_result(payload)

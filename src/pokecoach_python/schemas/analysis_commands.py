@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+OutputLocale = Literal["fr", "en"]
 
 
 class AnalysisCapabilitiesResponse(BaseModel):
@@ -10,6 +14,7 @@ class AnalysisCapabilitiesResponse(BaseModel):
     phase_order: list[str] = Field(alias="phaseOrder")
     profiles: list[str]
     regulations: list[str]
+    synthesis_available: bool = Field(alias="synthesisAvailable")
 
     model_config = {"populate_by_name": True, "serialize_by_alias": True}
 
@@ -17,6 +22,7 @@ class AnalysisCapabilitiesResponse(BaseModel):
 class AnalysisStartRequest(BaseModel):
     target_phase: str = Field(alias="targetPhase")
     profile: str
+    locale: OutputLocale = "fr"
 
     model_config = {"populate_by_name": True}
 

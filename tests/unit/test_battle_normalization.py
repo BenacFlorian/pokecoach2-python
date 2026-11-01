@@ -38,7 +38,19 @@ def test_validate_real_engine_record():
         participants={"ourFourSlots": [0, 1, 2, 3], "ourLeadSlots": [0, 1]},
         meta={
             "engine": "vgc-bench",
-            "terminalEvidence": {"kind": "simulator", "finished": True},
+            "terminalEvidence": {"kind": "simulator", "finished": True, "turnCount": 1},
+            "terminalState": {
+                "ours": {
+                    "selectedSlots": [0, 1, 2, 3],
+                    "enteredSlots": [0, 1],
+                    "survivorSlots": [0, 1],
+                },
+                "opponent": {
+                    "selectedSlots": [0, 1, 2, 3],
+                    "enteredSlots": [0, 1],
+                    "survivorSlots": [],
+                },
+            },
         },
     )
     validate_real_engine_battle(record, expected_engine="vgc-bench")

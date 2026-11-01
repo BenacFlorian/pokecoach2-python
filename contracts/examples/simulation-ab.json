@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "source": "simulation",
-  "completedPhases": ["A", "B"],
+  "completedPhases": ["A", "C"],
   "opponentLeads": {
     "sampleSize": 100,
     "leads": [

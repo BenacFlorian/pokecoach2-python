@@ -85,6 +85,12 @@ def assert_real_battles_eligible(
             raise EngineBridgeError("INCOMPLETE_TRACE", "missing terminal evidence")
         if record.outcome == "technical":
             raise EngineBridgeError("TECHNICAL_OUTCOME", "technical battle not eligible")
+        from pokecoach_python.llm.battle_sources import validate_d_synthesis_source
+
+        try:
+            validate_d_synthesis_source(record)
+        except ValueError as exc:
+            raise EngineBridgeError("INCOMPLETE_TRACE", str(exc)) from exc
 
 
 def current_engine_provenance_snapshot(

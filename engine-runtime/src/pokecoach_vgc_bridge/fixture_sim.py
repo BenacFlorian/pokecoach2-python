@@ -7,6 +7,10 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
+from pokecoach_vgc_bridge.full_battle_trace import (
+    build_fixture_complete_trace,
+    normalize_complete_battle,
+)
 from pokecoach_vgc_bridge.normalization import (
     TRACE_VERSION,
     build_battle_record,
@@ -115,17 +119,46 @@ class FixtureRuntime:
             outcome = "loss"
         our_actions = _our_turn1_actions(our, our_lead, digest)
         opp_actions = _opponent_turn1_actions(opp, opp_lead, digest)
-        return build_battle_record(
+        resolved_back = opponent_back if opponent_back is not None else _back_pair(opp_lead, digest[3])
+        opponent_selected = (
+            opp_lead[0],
+            opp_lead[1],
+            resolved_back[0],
+            resolved_back[1],
+        )
+        turns, terminal_state, damage_events = build_fixture_complete_trace(
+            seed=seed,
+            outcome=outcome,
+            opponent_lead=opp_lead,
+            our_four=our_four,
+            our_lead=our_lead,
+            opponent_selected=opponent_selected,
+            our_actions_turn1=our_actions,
+            opponent_actions_turn1=opp_actions,
+            digest_byte=digest[9],
+        )
+        return normalize_complete_battle(
             opponent_lead=opp_lead,
             our_lead=our_lead,
             our_four=our_four,
-            our_actions=our_actions,
-            opponent_actions=opp_actions,
+            opponent_selected=opponent_selected,
+            our_actions_turn1=our_actions,
+            opponent_actions_turn1=opp_actions,
             outcome=outcome,
             seed=seed,
             engine="fixture-bridge",
-            payload=payload,
-            opponent_back_pair=opponent_back,
+            turns=turns,
+            terminal_state=terminal_state,
+            terminal_evidence={
+                "kind": "simulator",
+                "turnCount": len(turns),
+                "finished": True,
+                "captureMethod": "fixture-synthetic",
+            },
+            opponent_back_pair=resolved_back,
+            damage_events=damage_events,
+            capture_quality={"exactHp": True, "roundedHp": False},
+            engine_fingerprint="fixture",
         )
 
 
