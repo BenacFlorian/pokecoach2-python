@@ -11,6 +11,7 @@ from pokecoach_vgc_bridge.full_battle_trace import (
     build_fixture_complete_trace,
     normalize_complete_battle,
 )
+from pokecoach_vgc_bridge.battle_session import imposed_four_with_lead_order
 from pokecoach_vgc_bridge.normalization import (
     TRACE_VERSION,
     build_battle_record,
@@ -87,7 +88,7 @@ class FixtureRuntime:
         back_pair = _back_pair(opp_lead, digest[3])
         opp_actions = _opponent_turn1_actions(opp, opp_lead, digest)
         our_actions = _our_turn1_actions(our, our_lead, digest)
-        return build_turn_one(
+        result = build_turn_one(
             opponent_lead=opp_lead,
             our_lead=our_lead,
             actions=opp_actions,
@@ -95,6 +96,16 @@ class FixtureRuntime:
             engine="fixture-bridge",
             our_actions=our_actions,
         )
+        body = result["payload"]
+        ordered_four = imposed_four_with_lead_order(our_four, our_lead)
+        body["ourFourSlots"] = list(ordered_four)
+        body["opponentLeadSlots"] = list(opp_lead)
+        body["opponentBackPair"] = list(back_pair)
+        body["previewAccepted"] = {
+            "ourPreviewSlots": list(ordered_four),
+            "opponentPreviewSlots": list((*opp_lead, *back_pair)),
+        }
+        return result
 
     def full_battle(self, payload: dict[str, Any]) -> dict[str, Any]:
         seed = int(payload["seed"])

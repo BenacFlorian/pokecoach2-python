@@ -146,6 +146,14 @@ def build_fixture_complete_trace(
                 }
             )
             damage_events.append(events[-1])
+        if turn_index > 1 and not events:
+            events.append(
+                {
+                    "kind": "state",
+                    "turn": turn_index,
+                    "note": "fixture-synthetic-turn",
+                }
+            )
         turns.append(
             {
                 "turn": turn_index,

@@ -26,14 +26,15 @@ def prepare_sources(
     *,
     output_token_budget: int = 0,
     model_name: str = "",
+    our_four: tuple[int, int, int, int] | None = None,
 ) -> PreparedSources:
     if token_budget <= 0:
         raise ValueError("token_budget must be positive")
     normalized = [normalize_stored_d_battle(record) for record in records]
     if not normalized:
         raise ValueError("NO_D_BATTLE")
-    our_four = normalized[0].ourFourSlots
-    if any(record.ourFourSlots != our_four for record in normalized[1:]):
+    our_four = our_four or normalized[0].ourFourSlots
+    if any(record.ourFourSlots != our_four for record in normalized):
         raise ValueError("our fixed four must remain stable across D battles")
     statistics = compute_d_statistics(normalized)
     manifest = select_d_battles(normalized)
@@ -43,7 +44,7 @@ def prepare_sources(
     limitations.append(
         "Selected logs are intentionally biased examples; global rates come from all D battles."
     )
-    our_team = _team_context(snapshots[0], side="ours")
+    our_team = _team_context(snapshots[0], side="ours", only_slots=our_four)
     opponent_team = _team_context(snapshots[1], side="opponent")
     provisional = PreparedSources(
         sourceHash="",
@@ -74,10 +75,18 @@ def default_token_counter(text: str) -> int:
     return max(1, math.ceil(len(text) / 4))
 
 
-def _team_context(snapshot: dict[str, Any], *, side: str) -> list[TeamPokemonContext]:
+def _team_context(
+    snapshot: dict[str, Any],
+    *,
+    side: str,
+    only_slots: tuple[int, int, int, int] | None = None,
+) -> list[TeamPokemonContext]:
     pokemon_rows = snapshot.get("pokemon") or []
+    allowed = set(only_slots) if only_slots is not None else None
     rows: list[TeamPokemonContext] = []
     for slot, row in enumerate(pokemon_rows):
+        if allowed is not None and slot not in allowed:
+            continue
         if not isinstance(row, dict):
             continue
         species = str(row.get("species") or row.get("name") or f"slot-{slot}")

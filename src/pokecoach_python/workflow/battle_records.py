@@ -112,6 +112,35 @@ def validate_terminal_battle(
         raise ValueError("battle requires at least one turn")
 
 
+def validate_turn_one_selection(
+    payload: dict[str, Any],
+    *,
+    our_four: tuple[int, int, int, int],
+    our_lead: tuple[int, int],
+    opponent_lead: tuple[int, int],
+) -> None:
+    four = canonical_four(our_four)
+    lead = canonical_lead(our_lead)
+    if lead[0] not in four or lead[1] not in four:
+        raise ValueError("ourLeadSlots must lie in ourFourSlots")
+    raw_four = payload.get("ourFourSlots")
+    if not isinstance(raw_four, list) or canonical_four(tuple(int(s) for s in raw_four)) != four:
+        raise ValueError("turn-one payload ourFourSlots mismatch with selection C")
+    raw_lead = payload.get("ourLeadSlots")
+    if not isinstance(raw_lead, list) or canonical_lead((int(raw_lead[0]), int(raw_lead[1]))) != lead:
+        raise ValueError("turn-one payload ourLeadSlots mismatch with selection C")
+    raw_opp = payload.get("opponentLeadSlots")
+    if not isinstance(raw_opp, list) or canonical_lead(
+        (int(raw_opp[0]), int(raw_opp[1]))
+    ) != canonical_lead(opponent_lead):
+        raise ValueError("turn-one payload opponentLeadSlots mismatch")
+    accepted = payload.get("previewAccepted")
+    if isinstance(accepted, dict):
+        preview = accepted.get("ourPreviewSlots")
+        if isinstance(preview, list) and tuple(int(s) for s in preview) != four:
+            raise ValueError("previewAccepted ourPreviewSlots mismatch")
+
+
 def sample_key_for_lead(lead_slots: tuple[int, int], valid_index: int) -> str:
     c = canonical_lead(lead_slots)
     return f"{c[0]}-{c[1]}:{valid_index:04d}"

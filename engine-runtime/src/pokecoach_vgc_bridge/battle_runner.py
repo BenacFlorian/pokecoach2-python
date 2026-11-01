@@ -184,16 +184,33 @@ async def _run_first_turn_battle(
     seed: int,
     opponent_lead: tuple[int, int],
     our_lead: tuple[int, int] | None,
+    payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     imposed = _canonical_lead(opponent_lead)
+    request = dict(payload or {})
+    our_sel_raw = request.get("ourSelection")
+    our_lead_raw = request.get("ourLeadSlots")
+    our_imposed_four: tuple[int, int, int, int] | None = None
+    if our_lead_raw and len(our_lead_raw) == 2:
+        our_lead = (int(our_lead_raw[0]), int(our_lead_raw[1]))
+    if isinstance(our_sel_raw, list) and len(our_sel_raw) == 4:
+        from pokecoach_vgc_bridge.battle_session import imposed_four_with_lead_order
+
+        raw_four = tuple(int(s) for s in our_sel_raw)
+        if len(set(raw_four)) != 4:
+            raise ValueError("ourSelection must contain four distinct slots")
+        if our_lead is None:
+            raise ValueError("ourLeadSlots required with ourSelection")
+        our_imposed_four = imposed_four_with_lead_order(raw_four, our_lead)
     p1, p2 = await create_policy_pair(
         checkpoint_path=checkpoint_path,
         our_snapshot=our_snapshot,
         opponent_snapshot=opponent_snapshot,
         regulation=regulation,
         seed=seed,
-        our_imposed_lead=our_lead,
+        our_imposed_lead=our_lead if our_imposed_four is None else None,
         opponent_imposed_lead=imposed,
+        our_imposed_four=our_imposed_four,
     )
     lifecycle_timeout = float(
         os.environ.get("POKECOACH_ENGINE_FIRST_TURN_LIFECYCLE_TIMEOUT", "120")
@@ -218,6 +235,9 @@ async def _run_first_turn_battle(
         raise ValueError("simulated lead rejection")
     back_pair = _back_pair_from_preview_four(opp_four)
     our_lead_order = (our_four[0], our_four[1])
+    if our_imposed_four is not None:
+        if our_four_obs != our_imposed_four:
+            raise ValueError("observed our bring-4 mismatch with imposed selection")
     battle_format = _battle_format_for_regulation(regulation)
     payload = extract_turn_one_payload(
         battle,
@@ -240,7 +260,7 @@ async def _run_first_turn_battle(
         opp_active_roster=opp_four,
         battle_format=battle_format,
     )
-    return build_turn_one(
+    result = build_turn_one(
         opponent_lead=imposed,
         our_lead=our_lead,
         actions=payload["actions"],
@@ -248,6 +268,15 @@ async def _run_first_turn_battle(
         engine="vgc-bench",
         our_actions=our_actions,
     )
+    body = result["payload"]
+    body["ourFourSlots"] = list(our_four_obs)
+    body["opponentLeadSlots"] = list(imposed)
+    body["opponentBackPair"] = list(back_pair)
+    body["previewAccepted"] = {
+        "ourPreviewSlots": list(our_four_obs),
+        "opponentPreviewSlots": list(opp_four),
+    }
+    return result
 
 
 async def _run_full_battle(

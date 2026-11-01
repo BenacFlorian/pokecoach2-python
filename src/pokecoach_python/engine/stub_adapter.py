@@ -121,6 +121,12 @@ class StubEngineAdapter(EngineAdapter):
             "backPair": back_pair,
             "ourLeadSlots": list(our_lead),
             "ourFourSlots": list(our_four),
+            "opponentLeadSlots": list(lead),
+            "opponentBackPair": list(back_pair),
+            "previewAccepted": {
+                "ourPreviewSlots": list(our_four),
+                "opponentPreviewSlots": list((*lead, *back_pair)),
+            },
             "endStateNotes": [f"stub turn1 lead {slot_a}-{slot_b}"],
         }
         return TurnOneRecord(

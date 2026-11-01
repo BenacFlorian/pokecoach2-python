@@ -124,6 +124,7 @@ class RealRuntime:
             seed=int(payload.get("seed", 0)),
             opponent_lead=opponent_lead,
             our_lead=our_lead,
+            payload=payload,
         )
         return _with_fingerprint(result, self._fingerprint)
 

@@ -11,6 +11,8 @@ from pokecoach_python.graphs.matchup_gameplan.store import MatchupGameplanStore
 from pokecoach_python.llm.client import StrategyClient
 from pokecoach_python.llm.output_locale import parse_output_locale
 from pokecoach_python.llm.source_preparation import prepare_sources
+from pokecoach_python.llm.source_selection import validate_source_selection
+from pokecoach_python.llm.strategy_references import validate_strategy_team_references
 from pokecoach_python.schemas.analysis_result import SimulationResultV2, validate_result
 from pokecoach_python.workflow.types import PhaseContext, PhaseOutput
 
@@ -35,13 +37,17 @@ def run_phase_e(context: PhaseContext) -> PhaseOutput:
     if set(actual_ids) != set(expected_ids):
         raise RuntimeError("phase E D battle ids do not match refinement.battleIds")
     assert_real_battles_eligible(context.run_provenance, [battle.record for battle in stored])
+    selection = checkpoint.leadPick.selection
+    our_four = tuple(selection.ourFourSlots)
     prepared = prepare_sources(
         stored,
         snapshots=(context.our_snapshot, context.opponent_snapshot),
         token_budget=settings.synthesis_source_token_budget(),
         output_token_budget=settings.synthesis_output_token_limit(),
         model_name=settings.synthesis_model_name(),
+        our_four=our_four,  # type: ignore[arg-type]
     )
+    validate_source_selection(prepared, selection)
     try:
         store.create_sources(
             run_id=context.run_id,
@@ -67,6 +73,11 @@ def run_phase_e(context: PhaseContext) -> PhaseOutput:
         store=store,
         client=client,
         output_locale=output_locale,
+    )
+    validate_strategy_team_references(
+        strategy,
+        our_snapshot=context.our_snapshot,
+        our_four=our_four,  # type: ignore[arg-type]
     )
     context.report_progress("synthesis", 1, 1)
     result = assemble_complete_result(context.partial_result, strategy.model_dump(mode="json"))

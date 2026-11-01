@@ -16,7 +16,7 @@ from pokecoach_python.schemas.analysis_result import (
 )
 from pokecoach_python.workflow.aggregation.leads import canonical_lead
 from pokecoach_python.workflow.aggregation.openings import aggregate_openings
-from pokecoach_python.workflow.battle_records import canonical_four
+from pokecoach_python.workflow.battle_records import canonical_four, validate_turn_one_selection
 from pokecoach_python.workflow.budgets import max_attempts, phase_b_valid_budget
 from pokecoach_python.workflow.types import PhaseContext, PhaseOutput
 
@@ -95,6 +95,12 @@ def run_phase_b(context: PhaseContext) -> PhaseOutput:
                     rejects += 1
                     rejects_total += 1
                     continue
+                validate_turn_one_selection(
+                    record.payload,
+                    our_four=our_four,
+                    our_lead=our_lead,
+                    opponent_lead=lead_slots,
+                )
                 valid.append(record)
                 done_global += 1
                 context.report_progress("B", done_global, total_target)

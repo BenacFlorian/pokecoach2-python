@@ -118,6 +118,21 @@ def _teampreview_with_imposed_four(four: tuple[int, int, int, int]) -> str:
     return "/team " + "".join(str(slot + 1) for slot in validated)
 
 
+def imposed_four_with_lead_order(
+    four: tuple[int, int, int, int],
+    lead: tuple[int, int],
+) -> tuple[int, int, int, int]:
+    """Order bring-4 for Showdown preview: leads first (positions a/b), then backs."""
+    validated = _validate_imposed_four(four)
+    lead_a, lead_b = _validate_lead_slots(lead)
+    if lead_a not in validated or lead_b not in validated:
+        raise ValueError("ourLeadSlots must be within ourSelection")
+    backs = tuple(sorted(slot for slot in validated if slot not in {lead_a, lead_b}))
+    if len(backs) != 2:
+        raise ValueError("ourSelection must contain exactly two back slots")
+    return (lead_a, lead_b, backs[0], backs[1])
+
+
 def _teampreview_with_imposed_four_on_battle(
     player: Any,
     battle: Any,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from pokecoach_python.llm.battle_sources import (
@@ -7,6 +9,41 @@ from pokecoach_python.llm.battle_sources import (
     validate_d_synthesis_source,
 )
 from tests.unit.phase_e_fixtures import damage_event, make_stored_battle
+
+
+def test_validate_d_synthesis_source_rejects_turns_without_events() -> None:
+    stored = make_stored_battle(
+        "b-empty",
+        "refinement:0003",
+        outcome="win",
+        our_survivors=(0,),
+        opponent_survivors=(),
+        turn_count=12,
+    )
+    turns = list(stored.record.turns)
+    turns[1] = {**turns[1], "events": []}
+    hollow = replace(stored.record, turns=tuple(turns))
+    with pytest.raises(ValueError, match="turn 2 has no captured events"):
+        validate_d_synthesis_source(hollow)
+
+
+def test_validate_d_synthesis_source_accepts_switch_only_turn() -> None:
+    stored = make_stored_battle(
+        "b-switch",
+        "refinement:0004",
+        outcome="win",
+        our_survivors=(0, 1),
+        opponent_survivors=(),
+        turn_count=2,
+        damage_events=(),
+    )
+    turns = list(stored.record.turns)
+    turns[1] = {
+        **turns[1],
+        "events": [{"kind": "switch", "turn": 2, "side": "ours", "fromSlot": 0, "toSlot": 4}],
+    }
+    switched = replace(stored.record, turns=tuple(turns))
+    validate_d_synthesis_source(switched)
 
 
 def test_validate_d_synthesis_source_rejects_incomplete_trace() -> None:

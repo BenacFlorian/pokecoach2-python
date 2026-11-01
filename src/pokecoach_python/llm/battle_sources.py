@@ -36,6 +36,17 @@ def validate_d_synthesis_source(record: BattleRecord) -> None:
     turn_count = terminal_evidence.get("turnCount")
     if isinstance(turn_count, int) and turn_count > len(record.turns):
         raise ValueError("synthesis source trace is incomplete for declared turnCount")
+    if isinstance(turn_count, int) and len(record.turns) != turn_count:
+        raise ValueError("synthesis source turn list length must match turnCount")
+    for turn in record.turns:
+        turn_no = int(turn.get("turn") or 0)
+        if turn_no <= 1:
+            continue
+        events = turn.get("events")
+        if not isinstance(events, list) or len(events) == 0:
+            raise ValueError(
+                f"synthesis source turn {turn_no} has no captured events (incomplete trace)"
+            )
     terminal_state = meta.get("terminalState")
     if not isinstance(terminal_state, dict):
         raise ValueError("synthesis source requires terminalState")

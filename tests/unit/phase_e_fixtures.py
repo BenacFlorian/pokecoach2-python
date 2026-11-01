@@ -47,18 +47,17 @@ def make_stored_battle(
     entered_opponent: tuple[int, ...] | None = None,
     declared_turn_count: int | None = None,
 ) -> StoredDBattle:
-    turns = tuple(
-        {
-            "turn": index,
-            "ourActions": [],
-            "events": [
-                dict(event, turn=event.get("turn", index))
-                for event in damage_events
-                if int(event.get("turn", 1)) == index
-            ],
-        }
-        for index in range(1, turn_count + 1)
-    )
+    turns_list: list[dict] = []
+    for index in range(1, turn_count + 1):
+        events = [
+            dict(event, turn=event.get("turn", index))
+            for event in damage_events
+            if int(event.get("turn", 1)) == index
+        ]
+        if index > 1 and not events:
+            events.append({"kind": "state", "turn": index, "note": "fixture-synthetic-turn"})
+        turns_list.append({"turn": index, "ourActions": [], "events": events})
+    turns = tuple(turns_list)
     record = BattleRecord(
         preview=PreviewRecord(
             opponent_lead_slots=opponent_lead,
