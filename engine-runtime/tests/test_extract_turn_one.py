@@ -5,6 +5,8 @@ from __future__ import annotations
 from pokecoach_vgc_bridge.battle_capture import BattleCapture
 from pokecoach_vgc_bridge.extract_turn_one import (
     _mon_for_roster_slot,
+    _target_roster_from_move_target,
+    _target_roster_slot_from_token,
     _turn1_actions_from_player_captures,
     _turn1_actions_from_replay,
 )
@@ -113,6 +115,92 @@ def test_turn1_actions_from_player_captures():
     assert actions[1]["move"] == "Protect"
 
 
+def test_target_roster_from_move_target_maps_showdown_foe_positions():
+    class _EmptyBattle:
+        active_pokemon: list = []
+        opponent_active_pokemon: list = []
+        team = {}
+        opponent_team = {}
+
+    battle = _EmptyBattle()
+    assert (
+        _target_roster_from_move_target(
+            battle,
+            side="opponent",
+            move_target=1,
+            target_side="ours",
+            our_active_roster=(0, 1, 2, 3),
+            opp_active_roster=(4, 5, 6, 7),
+        )
+        == 0
+    )
+    assert (
+        _target_roster_from_move_target(
+            battle,
+            side="opponent",
+            move_target=2,
+            target_side="ours",
+            our_active_roster=(0, 1, 2, 3),
+            opp_active_roster=(4, 5, 6, 7),
+        )
+        == 1
+    )
+    assert (
+        _target_roster_from_move_target(
+            battle,
+            side="ours",
+            move_target=1,
+            target_side="opponent",
+            our_active_roster=(0, 1),
+            opp_active_roster=(3, 5, 0, 1),
+        )
+        == 3
+    )
+    assert (
+        _target_roster_from_move_target(
+            battle,
+            side="ours",
+            move_target=2,
+            target_side="opponent",
+            our_active_roster=(0, 1),
+            opp_active_roster=(3, 5, 0, 1),
+        )
+        == 5
+    )
+
+
+def test_target_roster_slot_from_token_uses_field_lead_not_team_index():
+    class _Battle:
+        def get_pokemon(self, ident: str):
+            return self._mons.get(ident.split(":")[0].strip())
+
+    battle = _Battle()
+    back = _FakeMon()
+    battle._mons = {"p2c": back}
+    battle.opponent_active_pokemon = [None, None]
+    battle.opponent_team = [back, back, back, back]
+    assert (
+        _target_roster_slot_from_token(
+            battle,
+            "p2a:Incineroar",
+            target_side="opponent",
+            our_active_roster=(0, 1),
+            opp_active_roster=(3, 5, 0, 1),
+        )
+        == 3
+    )
+    assert (
+        _target_roster_slot_from_token(
+            battle,
+            "p2b:Garchomp",
+            target_side="opponent",
+            our_active_roster=(0, 1),
+            opp_active_roster=(3, 5, 0, 1),
+        )
+        == 5
+    )
+
+
 def test_turn1_actions_from_capture_showdown_message():
     from pokecoach_vgc_bridge.battle_order_serialize import parse_doubles_choose_message
 
@@ -142,4 +230,5 @@ def test_turn1_actions_from_capture_showdown_message():
     )
     assert actions is not None
     assert actions[0]["move"] == "Close Combat"
+    assert actions[0]["targets"][0]["ref"]["slot"] == 0
     assert actions[1]["move"] == "Fake Out"

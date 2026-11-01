@@ -238,6 +238,8 @@ def _turn1_actions_from_player_captures(
             slot=slot,
             single=single,
             active_roster=roster,
+            our_active_roster=our_active_roster,
+            opp_active_roster=opp_active_roster,
         )
         if action is None:
             return None
@@ -268,6 +270,8 @@ def _action_from_parsed_single(
     slot: int,
     single: dict[str, Any],
     active_roster: tuple[int, ...] | None,
+    our_active_roster: tuple[int, ...] | None = None,
+    opp_active_roster: tuple[int, ...] | None = None,
 ) -> dict[str, Any] | None:
     kind = single.get("orderKind")
     if kind == "move":
@@ -280,8 +284,8 @@ def _action_from_parsed_single(
             side=side,
             move_target=int(single.get("move_target") or 0),
             target_side="ours" if side == "opponent" else "opponent",
-            our_active_roster=None,
-            opp_active_roster=None,
+            our_active_roster=our_active_roster,
+            opp_active_roster=opp_active_roster,
         )
         action = _move_action(side=side, slot=slot, move=move, targets=[])
         if target_roster is not None:
@@ -332,8 +336,8 @@ def _action_from_parsed_single(
                     side=side,
                     move_target=int(tokens[2]),
                     target_side="ours" if side == "opponent" else "opponent",
-                    our_active_roster=None,
-                    opp_active_roster=None,
+                    our_active_roster=our_active_roster,
+                    opp_active_roster=opp_active_roster,
                 )
             return action
     return None
@@ -387,6 +391,58 @@ def _roster_slot_from_species_hint(
     return None
 
 
+def _field_lead_roster_pair(
+    target_side: str,
+    *,
+    our_active_roster: tuple[int, ...] | None,
+    opp_active_roster: tuple[int, ...] | None,
+) -> tuple[int, int] | None:
+    roster = our_active_roster if target_side == "ours" else opp_active_roster
+    if roster and len(roster) >= 2:
+        return (int(roster[0]), int(roster[1]))
+    return None
+
+
+def _showdown_target_active_index(move_target: int, *, foe: bool) -> int | None:
+    """Map poke-env Showdown target (-2..2) to active slot index 0 or 1."""
+    if foe:
+        if move_target == 1:
+            return 0
+        if move_target == 2:
+            return 1
+        return None
+    if move_target == -1:
+        return 0
+    if move_target == -2:
+        return 1
+    return None
+
+
+def _roster_slot_for_team_mon(
+    mon: Any,
+    *,
+    team: list[Any],
+    roster: tuple[int, ...] | None,
+    field_pos: int | None,
+    target_side: str,
+    our_active_roster: tuple[int, ...] | None,
+    opp_active_roster: tuple[int, ...] | None,
+) -> int | None:
+    pair = _field_lead_roster_pair(
+        target_side,
+        our_active_roster=our_active_roster,
+        opp_active_roster=opp_active_roster,
+    )
+    if pair is not None and field_pos in (0, 1):
+        return int(pair[field_pos])
+    for idx, candidate in enumerate(team):
+        if candidate is mon:
+            if roster and len(team) < 6 and idx < len(roster):
+                return int(roster[idx])
+            return idx
+    return None
+
+
 def _target_roster_from_move_target(
     battle: Any,
     *,
@@ -398,26 +454,53 @@ def _target_roster_from_move_target(
 ) -> int | None:
     if move_target == 0:
         return None
-    if target_side == "ours":
-        actives = getattr(battle, "active_pokemon", None) or []
-        roster = our_active_roster
-        team = list(getattr(battle, "team", {}).values())
+    if move_target in (1, 2):
+        pos = _showdown_target_active_index(move_target, foe=True)
+        if pos is None:
+            return None
+        if target_side == "ours":
+            actives = getattr(battle, "active_pokemon", None) or []
+            roster = our_active_roster
+            team = list(getattr(battle, "team", {}).values())
+        else:
+            actives = getattr(battle, "opponent_active_pokemon", None) or []
+            roster = opp_active_roster
+            team = list(getattr(battle, "opponent_team", {}).values())
+    elif move_target in (-1, -2):
+        pos = _showdown_target_active_index(move_target, foe=False)
+        if pos is None:
+            return None
+        if side == "ours":
+            actives = getattr(battle, "active_pokemon", None) or []
+            roster = our_active_roster
+            team = list(getattr(battle, "team", {}).values())
+            target_side = "ours"
+        else:
+            actives = getattr(battle, "opponent_active_pokemon", None) or []
+            roster = opp_active_roster
+            team = list(getattr(battle, "opponent_team", {}).values())
+            target_side = "opponent"
     else:
-        actives = getattr(battle, "opponent_active_pokemon", None) or []
-        roster = opp_active_roster
-        team = list(getattr(battle, "opponent_team", {}).values())
-    if len(actives) < 2:
         return None
-    index = 0 if move_target < 0 else 1
-    if index >= len(actives) or actives[index] is None:
+    if pos >= len(actives) or actives[pos] is None:
+        pair = _field_lead_roster_pair(
+            target_side,
+            our_active_roster=our_active_roster,
+            opp_active_roster=opp_active_roster,
+        )
+        if pair is not None:
+            return int(pair[pos])
         return None
-    mon = actives[index]
-    for idx, candidate in enumerate(team):
-        if candidate is mon:
-            if roster and len(team) < 6 and idx < len(roster):
-                return int(roster[idx])
-            return idx
-    return None
+    mon = actives[pos]
+    return _roster_slot_for_team_mon(
+        mon,
+        team=team,
+        roster=roster,
+        field_pos=pos,
+        target_side=target_side,
+        our_active_roster=our_active_roster,
+        opp_active_roster=opp_active_roster,
+    )
 
 
 def _turn1_actions_from_team_state(
@@ -757,6 +840,20 @@ def _roster_slot_from_switch_ident(
     return None
 
 
+def _target_side_prefix(target_side: str) -> str:
+    return "p1" if target_side == "ours" else "p2"
+
+
+def _active_role_from_target_token(token: str, target_side: str) -> str | None:
+    prefix = _target_side_prefix(target_side)
+    ident = token.split(":")[0].strip().lower()
+    if ident == f"{prefix}a":
+        return "a"
+    if ident == f"{prefix}b":
+        return "b"
+    return None
+
+
 def _target_roster_slot_from_token(
     battle: Any,
     token: str | None,
@@ -769,24 +866,38 @@ def _target_roster_slot_from_token(
         return None
     if not (token.startswith("p1") or token.startswith("p2")):
         return None
+    role = _active_role_from_target_token(token, target_side)
+    pair = _field_lead_roster_pair(
+        target_side,
+        our_active_roster=our_active_roster,
+        opp_active_roster=opp_active_roster,
+    )
+    if role is not None and pair is not None:
+        return int(pair[0] if role == "a" else pair[1])
     try:
         mon = battle.get_pokemon(token)
     except Exception:
         return None
     if target_side == "ours":
+        actives = getattr(battle, "active_pokemon", None) or []
         team = list(getattr(battle, "team", {}).values())
-        active = our_active_roster
+        roster = our_active_roster
     else:
+        actives = getattr(battle, "opponent_active_pokemon", None) or []
         team = list(getattr(battle, "opponent_team", {}).values())
-        active = opp_active_roster
-    for idx, candidate in enumerate(team):
-        if candidate is mon:
-            if len(team) >= 6:
-                return idx
-            if active and idx < len(active):
-                return int(active[idx])
-            return idx
-    return None
+        roster = opp_active_roster
+    for pos, active_mon in enumerate(actives[:2]):
+        if active_mon is mon and pair is not None:
+            return int(pair[pos])
+    return _roster_slot_for_team_mon(
+        mon,
+        team=team,
+        roster=roster,
+        field_pos=None,
+        target_side=target_side,
+        our_active_roster=our_active_roster,
+        opp_active_roster=opp_active_roster,
+    )
 
 
 def _request_target_from_mon(mon: Any) -> Any:
