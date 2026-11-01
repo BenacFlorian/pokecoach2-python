@@ -63,12 +63,15 @@ class StubEngineAdapter(EngineAdapter):
         )
 
     def first_turn(self, request: SimulationRequest) -> TurnOneRecord:
-        """Synthetic turn-1 actions until VGC-Bench implements real first_turn."""
         if request.opponent_lead is None:
             raise ValueError("opponent_lead required for first_turn")
+        if request.our_selection is None or request.our_lead_slots is None:
+            raise ValueError("our_selection and our_lead_slots required for first_turn")
         lead = request.opponent_lead
         if lead[0] == lead[1]:
             raise ValueError("invalid opponent_lead")
+        our_four = canonical_four(request.our_selection)
+        our_lead = canonical_lead(request.our_lead_slots)
         digest = hashlib.sha256(f"first-turn:{request.seed}".encode()).digest()
         if digest[0] == 0:
             raise ValueError("simulated lead rejection")
@@ -76,13 +79,13 @@ class StubEngineAdapter(EngineAdapter):
         target_a = digest[1] % 6
         target_b = digest[2] % 6
         if digest[3] % 5 == 0:
-            action_a: dict[str, Any] = {
+            opp_action_a: dict[str, Any] = {
                 "kind": "switch",
                 "actor": {"side": "opponent", "slot": slot_a},
                 "switchTo": {"side": "opponent", "slot": (digest[4] % 6)},
             }
         else:
-            action_a = {
+            opp_action_a = {
                 "kind": "move",
                 "actor": {"side": "opponent", "slot": slot_a},
                 "move": "Stub Move A",
@@ -91,14 +94,14 @@ class StubEngineAdapter(EngineAdapter):
                 ],
             }
         if digest[5] % 4 == 0:
-            action_b = {
+            opp_action_b = {
                 "kind": "move",
                 "actor": {"side": "opponent", "slot": slot_b},
                 "move": "Stub Move B",
                 "targets": [{"kind": "zone", "zone": "all-opponents"}],
             }
         else:
-            action_b = {
+            opp_action_b = {
                 "kind": "move",
                 "actor": {"side": "opponent", "slot": slot_b},
                 "move": "Stub Move B",
@@ -107,16 +110,17 @@ class StubEngineAdapter(EngineAdapter):
                 ],
             }
         if digest[6] % 7 == 0:
-            action_b["terastallize"] = "Fire"
+            opp_action_b["terastallize"] = "Fire"
         back_pool = [s for s in range(6) if s not in {slot_a, slot_b}]
         back_idx = digest[7] % max(1, len(back_pool) - 1)
         back_pair = sorted((back_pool[back_idx], back_pool[(back_idx + 1) % len(back_pool)]))
-        preview_digest = hashlib.sha256(f"our-lead:{request.seed}".encode()).digest()
-        our_slots = sorted({preview_digest[0] % 6, (preview_digest[0] + 2) % 6})
+        our_actions = self._our_turn1_actions(request.seed, our_lead)
         payload: dict[str, Any] = {
-            "actions": [action_a, action_b],
+            "opponentActions": [opp_action_a, opp_action_b],
+            "ourActions": our_actions,
             "backPair": back_pair,
-            "ourLeadSlots": our_slots,
+            "ourLeadSlots": list(our_lead),
+            "ourFourSlots": list(our_four),
             "endStateNotes": [f"stub turn1 lead {slot_a}-{slot_b}"],
         }
         return TurnOneRecord(

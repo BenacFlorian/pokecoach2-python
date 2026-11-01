@@ -1,0 +1,22 @@
+{
+  "pokemon": [
+    {
+      "rawBlock": "Whimsicott @ Focus Sash\nAbility: Prankster\nLevel: 50\nEVs: 1 Def / 32 SpA / 1 SpD / 32 Spe\nTimid Nature\n- Moonblast\n- Endeavor\n- Encore\n- Tailwind"
+    },
+    {
+      "rawBlock": "Floette-Eternal (F) @ Floettite\nAbility: Flower Veil\nLevel: 50\nEVs: 2 HP / 32 SpA / 32 Spe\nTimid Nature\n- Dazzling Gleam\n- Moonblast\n- Protect\n- Light of Ruin"
+    },
+    {
+      "rawBlock": "Sneasler @ White Herb\nAbility: Unburden\nLevel: 50\nEVs: 32 Atk / 2 Def / 32 Spe\nAdamant Nature\n- Dire Claw\n- Close Combat\n- Fake Out\n- Rock Slide"
+    },
+    {
+      "rawBlock": "Basculegion (M) @ Colbur Berry\nAbility: Adaptability\nLevel: 50\nEVs: 32 Atk / 2 Def / 32 Spe\nAdamant Nature\n- Wave Crash\n- Last Respects\n- Protect\n- Aqua Jet"
+    },
+    {
+      "rawBlock": "Kleavor @ Life Orb\nAbility: Sharpness\nLevel: 50\nEVs: 2 HP / 32 Atk / 4 Def / 28 Spe\nJolly Nature\n- X-Scissor\n- Stone Axe\n- Protect\n- Night Slash"
+    },
+    {
+      "rawBlock": "Chandelure @ Chandelurite\nAbility: Flash Fire\nLevel: 50\nEVs: 30 HP / 15 SpD / 21 Spe\nTimid Nature\n- Heat Wave\n- Shadow Ball\n- Protect\n- Taunt"
+    }
+  ]
+}

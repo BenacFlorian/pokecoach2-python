@@ -69,7 +69,9 @@ def aggregate_turn_one(
         if canonical_lead(record.opponent_lead_slots) != expected:
             raise ValueError("turn-one record lead mismatch")
         payload = record.payload
-        actions_raw = payload.get("actions")
+        actions_raw = payload.get("opponentActions")
+        if actions_raw is None:
+            actions_raw = payload.get("actions")
         back_raw = payload.get("backPair")
         if not isinstance(actions_raw, list) or len(actions_raw) != 2:
             raise ValueError("turn-one payload requires two opponent actions")
@@ -101,9 +103,10 @@ def aggregate_turn_one(
         pair = row["value"]
         row["value"] = list(canonical_back_pair((pair[0], pair[1])))
 
-    slot_rows = _frequency_rows(slot_counter, sample_size * 2)
+    slot_rows = _frequency_rows(slot_counter, sample_size)
     for row in slot_rows:
         row["value"] = int(row["value"])
+        row["marginalBasis"] = "per-slot-in-back-pair"
 
     return Turn1Section(
         sampleSize=sample_size,

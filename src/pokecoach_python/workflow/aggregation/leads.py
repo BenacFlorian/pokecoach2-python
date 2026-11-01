@@ -39,7 +39,6 @@ def aggregate_leads(records: Sequence[PreviewRecord]) -> OpponentLeadsSection:
                 id=lead_id(slots),
                 slots=slots,
                 count=count,
-                turn1=None,
             )
         )
     return OpponentLeadsSection(sampleSize=sample_size, leads=leads)

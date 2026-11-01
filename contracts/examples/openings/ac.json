@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 2,
+  "source": "simulation",
+  "completedPhases": ["A", "C"],
+  "opponentLeads": {
+    "sampleSize": 100,
+    "leads": [
+      {"id": "lead-0-1", "slots": [0, 1], "count": 42},
+      {"id": "lead-2-3", "slots": [2, 3], "count": 18}
+    ]
+  },
+  "leadPick": {
+    "selection": {"ourFourSlots": [0, 1, 4, 5], "ourLeadSlots": [0, 1]},
+    "comparisons": [
+      {
+        "opponentLeadId": "lead-0-1",
+        "ourFourSlots": [0, 1, 4, 5],
+        "ourLeadSlots": [0, 1],
+        "wins": 3,
+        "losses": 1,
+        "draws": 0,
+        "sampleSize": 4
+      }
+    ],
+    "selectionRuleVersion": "selection-v1",
+    "limitations": ["Effectifs faibles : interpréter la recommandation avec prudence."]
+  },
+  "openings": null,
+  "refinement": null,
+  "gameplan": null,
+  "winCondition": null
+}

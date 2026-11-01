@@ -11,7 +11,6 @@ from typing import Any
 from pokecoach_python.engine.contracts import BattleRecord
 from pokecoach_python.schemas.analysis_result import (
     LeadSelection,
-    OpponentLeadEntry,
     RefinementSection,
     SimulationResultV2,
 )
@@ -30,12 +29,22 @@ class FixedBattleConfiguration:
     opponent_back: tuple[int, int]
 
 
-def _top_back_pair(entry: OpponentLeadEntry) -> tuple[int, int]:
-    if entry.turn1 is None or not entry.turn1.backPairs:
-        raise ValueError(f"phase D requires turn1 back pairs for lead {entry.id}")
-    lead = canonical_lead(entry.slots)
+def _top_back_pair_from_openings(
+    result: SimulationResultV2,
+    opponent_lead_id: str,
+) -> tuple[int, int]:
+    if result.openings is None:
+        raise ValueError("phase D requires openings from phase B")
+    lead = None
+    for entry in result.openings.byOpponentLead:
+        if entry.opponentLeadId == opponent_lead_id:
+            lead = entry
+            break
+    if lead is None or not lead.backPairs:
+        raise ValueError(f"phase D requires back pairs for lead {opponent_lead_id}")
     candidates: list[tuple[tuple[int, int], int]] = []
-    for row in entry.turn1.backPairs:
+    opp_slots = canonical_lead(lead.opponentLeadSlots)
+    for row in lead.backPairs:
         if not isinstance(row, dict):
             continue
         value = row.get("value")
@@ -43,11 +52,11 @@ def _top_back_pair(entry: OpponentLeadEntry) -> tuple[int, int]:
         if not isinstance(count, int) or not isinstance(value, list) or len(value) != 2:
             continue
         pair = canonical_lead((int(value[0]), int(value[1])))
-        if pair[0] in lead or pair[1] in lead:
+        if pair[0] in opp_slots or pair[1] in opp_slots:
             continue
         candidates.append((pair, count))
     if not candidates:
-        raise ValueError(f"no valid opponent back pair for lead {entry.id}")
+        raise ValueError(f"no valid opponent back pair for lead {opponent_lead_id}")
     candidates.sort(key=lambda item: (-item[1], item[0]))
     return candidates[0][0]
 
@@ -57,14 +66,14 @@ def select_refinement_configuration(
     *,
     studied_lead_count: int | None = None,
 ) -> FixedBattleConfiguration:
-    if result.leadPick is None or result.opponentLeads is None:
-        raise ValueError("phase D requires completed leadPick and opponentLeads")
+    if result.leadPick is None or result.opponentLeads is None or result.openings is None:
+        raise ValueError("phase D requires completed leadPick, opponentLeads and openings")
     top_n = studied_lead_count or 3
     studied = result.opponentLeads.leads[: min(top_n, len(result.opponentLeads.leads))]
     if not studied:
         raise ValueError("no opponent leads available for refinement")
     target = studied[0]
-    opponent_back = _top_back_pair(target)
+    opponent_back = _top_back_pair_from_openings(result, target.id)
     selection = result.leadPick.selection
     our_four = canonical_four(selection.ourFourSlots)
     our_lead = canonical_lead(selection.ourLeadSlots)

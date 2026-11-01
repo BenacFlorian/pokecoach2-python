@@ -17,8 +17,12 @@ devbox run engine-fetch-checkpoint
 # Showdown local (depuis clone vgc-bench/pokemon-showdown, port 8090)
 # node pokemon-showdown start 8090 --no-security
 
-devbox run engine-check -- --our-team chemin/our.json --opponent-team chemin/opp.json \
-  --modes preview,first_turn,full_battle --seed 42 --output /tmp/engine-report.json
+uv run python -m pokecoach_python.engine.check \
+  --our-team tests/fixtures/engine-real/mb-regmb-our.json \
+  --opponent-team tests/fixtures/engine-real/mb-regmb-opp.json \
+  --regulation M-B \
+  --modes preview,first_turn,full_battle --seed 42 --test-d-constraints \
+  --output /tmp/engine-report.json
 ```
 
 ### Dépendances VGC-Bench (runtime réel)
@@ -37,13 +41,33 @@ Avec le stub : mêmes flags, `POKECOACH_ENGINE=stub`.
 
 ```bash
 export POKECOACH_BRIDGE_FIXTURE=1
-uv run pytest tests/unit/test_engine_protocol.py tests/unit/test_vgc_subprocess.py -q
+export POKECOACH_ENGINE=vgc_bench
+uv run pytest tests/unit tests/integration -q
+POKECOACH_BRIDGE_FIXTURE=1 POKECOACH_ENGINE=vgc_bench devbox run engine-check -- \
+  --our-team tests/fixtures/engine-real/sample-team.json \
+  --opponent-team tests/fixtures/engine-real/sample-team.json \
+  --modes preview,first_turn,full_battle --seed 1 --test-d-constraints
 ```
+
+## Clôture plan 04b
+
+Checklist complète (preuves + run A→D smoke) : [cloture-04b.md](cloture-04b.md).
+
+Équipes Reg M-B de référence pour `engine-check` : `tests/fixtures/engine-real/mb-regmb-our.json` et `mb-regmb-opp.json`.
+
+## Tests moteur réel (BC + Showdown)
+
+```bash
+export POKECOACH_VGC_REAL=1
+uv run pytest tests/integration/test_vgc_preview_real.py tests/integration/test_vgc_first_turn_real.py tests/integration/test_vgc_full_battle_real.py tests/integration/test_vgc_constraints_real.py -q
+```
+
+Optionnel : `POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS=1` réactive les open team sheets Showdown (défaut `0`, plus fiable avec le serveur local).
 
 ## Nouveau run après changement moteur
 
 Toujours relancer **depuis la phase A** après passage stub → réel ou changement de checkpoint. Les runs existants restent consultables avec leur provenance d’origine.
 
-## Limite actuelle
+## Limite opérationnelle
 
-Le chargement **PyTorch + policy_player VGC-Bench** dans `engine-runtime` est préparé (`vgc_real.py`) ; tant que les dépendances épinglées ne sont pas installées et le hook Showdown branché, seul le bridge **fixture** (tests) ou l’échec explicite `CHECKPOINT_UNAVAILABLE` s’appliquent — pas de repli vers le stub dans `VgcBenchEngineAdapter`.
+Le runtime réel (`vgc_real`, `battle_runner`, `battle_session`) exige `devbox run engine-setup` (clone `vgc-bench` + deps), checkpoint BC local et Showdown sur `SHOWDOWN_SERVER_URL`. Chaque session bridge utilise des comptes Showdown éphémères pour éviter les combats zombies sur le serveur local.

@@ -101,6 +101,10 @@ class VgcBenchEngineAdapter(EngineAdapter):
             raise ValueError("opponent_lead required for first_turn")
         payload = _sim_payload(self._settings, request)
         payload["opponentLead"] = list(request.opponent_lead)
+        if request.our_selection is not None:
+            payload["ourSelection"] = list(request.our_selection)
+        if request.our_lead_slots is not None:
+            payload["ourLeadSlots"] = list(request.our_lead_slots)
         raw = self._client.request(
             "first_turn",
             payload,

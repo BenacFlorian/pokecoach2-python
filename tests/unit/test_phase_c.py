@@ -56,9 +56,9 @@ def _leads_section() -> OpponentLeadsSection:
     return OpponentLeadsSection(
         sampleSize=100,
         leads=[
-            OpponentLeadEntry(id="lead-0-1", slots=(0, 1), count=50, turn1=None),
-            OpponentLeadEntry(id="lead-2-3", slots=(2, 3), count=30, turn1=None),
-            OpponentLeadEntry(id="lead-4-5", slots=(4, 5), count=20, turn1=None),
+            OpponentLeadEntry(id="lead-0-1", slots=(0, 1), count=50),
+            OpponentLeadEntry(id="lead-2-3", slots=(2, 3), count=30),
+            OpponentLeadEntry(id="lead-4-5", slots=(4, 5), count=20),
         ],
     )
 
@@ -152,7 +152,7 @@ def test_incomplete_coverage_fallback():
 def test_draw_and_single_battle_rate():
     leads = OpponentLeadsSection(
         sampleSize=10,
-        leads=[OpponentLeadEntry(id="lead-0-1", slots=(0, 1), count=10, turn1=None)],
+        leads=[OpponentLeadEntry(id="lead-0-1", slots=(0, 1), count=10)],
     )
     cand = (0, 1, 2, 3)
     battles = [
@@ -175,9 +175,8 @@ def test_unobserved_matchup_omitted_from_comparisons():
     assert all(row.get("sampleSize", 0) > 0 for row in result.comparisons)
 
 
-def test_phase_c_envelope_preserves_ab():
+def test_phase_c_envelope_preserves_a():
     from pokecoach_python.workflow.phases.phase_a import run_phase_a
-    from pokecoach_python.workflow.phases.phase_b import run_phase_b
     from pokecoach_python.workflow.phases.phase_c import run_phase_c
     from pokecoach_python.workflow.types import PhaseContext
     from pokecoach_python.engine.stub_adapter import StubEngineAdapter
@@ -201,10 +200,9 @@ def test_phase_c_envelope_preserves_ab():
 
     phase_a = run_phase_a(_ctx("smoke", "A", {"completedPhases": []}))
     partial = phase_a.result.model_dump(mode="json")
-    phase_b = run_phase_b(_ctx("smoke", "B", partial))
-    partial_b = phase_b.result.model_dump(mode="json")
-    phase_c = run_phase_c(_ctx("smoke", "C", partial_b))
-    assert phase_c.result.completedPhases == ["A", "B", "C"]
-    assert phase_c.result.opponentLeads == phase_b.result.opponentLeads
+    phase_c = run_phase_c(_ctx("smoke", "C", partial))
+    assert phase_c.result.completedPhases == ["A", "C"]
+    assert phase_c.result.opponentLeads == phase_a.result.opponentLeads
     assert phase_c.result.leadPick is not None
+    assert phase_c.result.openings is None
     assert phase_c.result.leadPick.selectionRuleVersion == "selection-v1"

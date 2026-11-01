@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 2,
+  "source": "simulation",
+  "completedPhases": ["A", "C", "B", "D"],
+  "opponentLeads": {
+    "sampleSize": 100,
+    "leads": [
+      {"id": "lead-0-1", "slots": [0, 1], "count": 42},
+      {"id": "lead-2-3", "slots": [2, 3], "count": 18}
+    ]
+  },
+  "leadPick": {
+    "selection": {"ourFourSlots": [0, 1, 4, 5], "ourLeadSlots": [0, 1]},
+    "comparisons": [],
+    "selectionRuleVersion": "selection-v1",
+    "limitations": []
+  },
+  "openings": {
+    "selection": {"ourFourSlots": [0, 1, 4, 5], "ourLeadSlots": [0, 1]},
+    "recommendationRule": "model-frequency-v1",
+    "samplingPolicy": "conditional-back-v1",
+    "byOpponentLead": [
+      {
+        "opponentLeadId": "lead-0-1",
+        "opponentLeadSlots": [0, 1],
+        "sampleSize": 5,
+        "opponentActions": [],
+        "ourActions": [
+          {
+            "value": [
+              {
+                "kind": "move",
+                "actor": {"side": "ours", "slot": 0},
+                "move": "Moonblast",
+                "targets": [{"kind": "pokemon", "ref": {"side": "opponent", "slot": 0}}]
+              },
+              {
+                "kind": "move",
+                "actor": {"side": "ours", "slot": 1},
+                "move": "Fake Out",
+                "targets": [{"kind": "pokemon", "ref": {"side": "opponent", "slot": 1}}]
+              }
+            ],
+            "count": 5,
+            "sampleSize": 5
+          }
+        ],
+        "recommendation": {
+          "value": [
+            {
+              "kind": "move",
+              "actor": {"side": "ours", "slot": 0},
+              "move": "Moonblast",
+              "targets": [{"kind": "pokemon", "ref": {"side": "opponent", "slot": 0}}]
+            },
+            {
+              "kind": "move",
+              "actor": {"side": "ours", "slot": 1},
+              "move": "Fake Out",
+              "targets": [{"kind": "pokemon", "ref": {"side": "opponent", "slot": 1}}]
+            }
+          ],
+          "count": 5,
+          "sampleSize": 5
+        },
+        "backPairs": [{"value": [2, 3], "count": 5, "sampleSize": 5}],
+        "backSlotMarginals": [
+          {"value": 2, "count": 5, "sampleSize": 5, "marginalBasis": "per-slot-in-back-pair"},
+          {"value": 3, "count": 5, "sampleSize": 5, "marginalBasis": "per-slot-in-back-pair"}
+        ],
+        "endStateNotes": []
+      },
+      {
+        "opponentLeadId": "lead-2-3",
+        "opponentLeadSlots": [2, 3],
+        "sampleSize": 5,
+        "opponentActions": [],
+        "ourActions": [],
+        "recommendation": {
+          "value": [
+            {
+              "kind": "move",
+              "actor": {"side": "ours", "slot": 0},
+              "move": "Protect",
+              "targets": [{"kind": "pokemon", "ref": {"side": "ours", "slot": 0}}]
+            },
+            {
+              "kind": "move",
+              "actor": {"side": "ours", "slot": 1},
+              "move": "Tailwind",
+              "targets": [{"kind": "zone", "zone": "field"}]
+            }
+          ],
+          "count": 5,
+          "sampleSize": 5
+        },
+        "backPairs": [{"value": [0, 4], "count": 5, "sampleSize": 5}],
+        "backSlotMarginals": [
+          {"value": 0, "count": 5, "sampleSize": 5, "marginalBasis": "per-slot-in-back-pair"},
+          {"value": 4, "count": 5, "sampleSize": 5, "marginalBasis": "per-slot-in-back-pair"}
+        ],
+        "endStateNotes": []
+      }
+    ]
+  },
+  "refinement": {
+    "configuration": {"ourFourSlots": [0, 1, 4, 5], "ourLeadSlots": [0, 1]},
+    "sampleSize": 2,
+    "outcomes": {"wins": 1, "losses": 1, "draws": 0},
+    "firstTurns": [],
+    "battleIds": ["b1", "b2"],
+    "limitations": []
+  },
+  "gameplan": null,
+  "winCondition": null
+}

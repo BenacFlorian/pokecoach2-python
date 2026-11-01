@@ -1,10 +1,9 @@
-"""Integration-style tests for phase C on top of phases A and B."""
+"""Integration-style tests for phase C on top of phase A."""
 
 from __future__ import annotations
 
 from pokecoach_python.engine.stub_adapter import StubEngineAdapter
 from pokecoach_python.workflow.phases.phase_a import run_phase_a
-from pokecoach_python.workflow.phases.phase_b import run_phase_b
 from pokecoach_python.workflow.phases.phase_c import run_phase_c
 from pokecoach_python.workflow.types import PhaseContext
 
@@ -30,10 +29,9 @@ def _ctx(profile: str, target: str, partial: dict, seed: int = 13) -> PhaseConte
 def test_smoke_run_through_c_adds_lead_pick():
     phase_a = run_phase_a(_ctx("smoke", "A", {"completedPhases": []}))
     partial = phase_a.result.model_dump(mode="json")
-    phase_b = run_phase_b(_ctx("smoke", "B", partial))
-    partial_b = phase_b.result.model_dump(mode="json")
-    phase_c = run_phase_c(_ctx("smoke", "C", partial_b))
+    phase_c = run_phase_c(_ctx("smoke", "C", partial))
+    assert phase_c.result.completedPhases == ["A", "C"]
     assert phase_c.result.leadPick is not None
-    studied = min(3, len(phase_b.result.opponentLeads.leads))  # type: ignore[union-attr]
-    assert len(phase_c.result.leadPick.firstTurns) == studied
+    assert phase_c.result.openings is None
+    studied = min(3, len(phase_a.result.opponentLeads.leads))  # type: ignore[union-attr]
     assert len(phase_c.result.leadPick.comparisons) >= studied

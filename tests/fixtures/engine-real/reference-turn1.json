@@ -1,0 +1,20 @@
+{
+  "traceVersion": 1,
+  "description": "Reference turn-1 opponent actions (expurgated fixture shape)",
+  "opponentLead": [0, 1],
+  "actions": [
+    {
+      "kind": "move",
+      "actor": {"side": "opponent", "slot": 0},
+      "move": "Protect",
+      "targets": [{"kind": "pokemon", "ref": {"side": "ours", "slot": 2}}]
+    },
+    {
+      "kind": "move",
+      "actor": {"side": "opponent", "slot": 1},
+      "move": "Fake Out",
+      "targets": [{"kind": "pokemon", "ref": {"side": "ours", "slot": 3}}]
+    }
+  ],
+  "backPair": [2, 3]
+}

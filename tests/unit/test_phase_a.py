@@ -28,7 +28,6 @@ def test_aggregate_leads_counts_and_order():
     assert section.leads[0].count == 2
     assert section.leads[0].slots == (0, 1)
     assert section.leads[1].count == 1
-    assert all(entry.turn1 is None for entry in section.leads)
 
 
 def test_aggregate_rejects_invalid_slot():

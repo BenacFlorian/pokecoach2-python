@@ -7,8 +7,11 @@ from pydantic import BaseModel, Field
 
 class AnalysisCapabilitiesResponse(BaseModel):
     phases: list[str]
+    phase_order: list[str] = Field(alias="phaseOrder")
     profiles: list[str]
     regulations: list[str]
+
+    model_config = {"populate_by_name": True, "serialize_by_alias": True}
 
 
 class AnalysisStartRequest(BaseModel):

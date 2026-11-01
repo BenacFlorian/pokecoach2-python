@@ -6,7 +6,7 @@ import logging
 import signal
 import time
 
-from pokecoach_python.core.config import get_settings
+from pokecoach_python.core.config import get_settings, reset_settings_cache
 from pokecoach_python.db.analysis_repository import AnalysisRepository
 from pokecoach_python.db.session import create_db_engine
 from pokecoach_python.workflow.runner import WorkflowRunner
@@ -32,7 +32,10 @@ class WorkerSupervisor:
     def run_forever(self) -> None:
         signal.signal(signal.SIGTERM, self.request_stop)
         signal.signal(signal.SIGINT, self.request_stop)
-        logger.info("worker started")
+        logger.info(
+            "worker started (POKECOACH_ENGINE=%s)",
+            self._settings.engine_mode,
+        )
         while not self._stop:
             expired = self._repo.fail_expired_leases()
             if expired:
@@ -41,6 +44,15 @@ class WorkerSupervisor:
             if claim is None:
                 time.sleep(POLL_IDLE_SECONDS)
                 continue
+            reset_settings_cache()
+            self._settings = get_settings()
+            self._repo = AnalysisRepository(self._engine, self._settings)
+            self._runner = WorkflowRunner(self._repo, self._settings)
+            logger.info(
+                "processing run with POKECOACH_ENGINE=%s checkpoint=%s",
+                self._settings.engine_mode,
+                self._settings.vgc_checkpoint_path or "(none)",
+            )
             run_id = claim.context_row.id
             token = claim.lease_token
             self._active = (run_id, token)

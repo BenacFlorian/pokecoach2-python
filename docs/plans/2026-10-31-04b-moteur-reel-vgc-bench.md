@@ -16,6 +16,16 @@ Ce plan complète le raccordement moteur du plan 04. Les phases 5–8 déjà dé
 
 Il n’y a pas de nouvelle phase statistique entre D et E : B mesure déjà le tour 1 adverse, C calcule nos premiers tours recommandés, D mesure ceux de la configuration ciblée. Changer uniquement les chaînes « Stub Move A/B » pour des noms tirés des sets ne constituerait pas une simulation BC.
 
+### Statut d’implémentation (code, oct. 2026)
+
+| Tâche | Livré | Preuve opérationnelle |
+| --- | --- | --- |
+| 1 | manifest, `engine-setup`, fetch checkpoint, config, recette | Install vgc-bench + Showdown |
+| 2–6 | subprocess, bridge, normalisation, phases A–D, provenance, tests | `POKECOACH_VGC_REAL=1` (7 tests), [cloture-04b.md](../recettes/cloture-04b.md) |
+| 7 | `engine-check`, recette A→D smoke | `engine-check` Reg M-B + run neuf UI (checklist clôture) |
+
+**Clôture officielle** : suivre [docs/recettes/cloture-04b.md](../recettes/cloture-04b.md). Les phases A–D utilisent le moteur réel lorsque `POKECOACH_ENGINE=vgc_bench` (pas `POKECOACH_BRIDGE_FIXTURE`), sur un **run créé après** ce basculement.
+
 ## Constats vérifiés dans le code local
 
 | Zone | État observé | Conséquence pour ce plan |

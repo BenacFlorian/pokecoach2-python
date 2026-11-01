@@ -3,16 +3,68 @@
 from __future__ import annotations
 
 import asyncio
+import os
+from contextlib import suppress
 from typing import Any
 
 from pokecoach_vgc_bridge.battle_session import (
     _lead_slots_from_battle,
     create_policy_pair,
-    ensure_showdown_available,
     vgc_deps_available,
 )
-from pokecoach_vgc_bridge.extract_turn_one import extract_turn_one_payload
+from pokecoach_vgc_bridge.extract_turn_one import _actions_for_side, extract_turn_one_payload
 from pokecoach_vgc_bridge.normalization import build_battle_record, build_preview, build_turn_one
+
+
+def _canonical_lead(lead: tuple[int, int]) -> tuple[int, int]:
+    return (lead[0], lead[1]) if lead[0] < lead[1] else (lead[1], lead[0])
+
+
+async def _await_preview_selection(
+    p1: Any,
+    p2: Any,
+    *,
+    timeout_seconds: float,
+) -> tuple[tuple[int, int], tuple[int, int]]:
+    """Return both selected leads and disconnect before the first battle turn."""
+    battle_task = asyncio.create_task(p1.battle_against(p2, n_battles=1))
+    try:
+        async with asyncio.timeout(timeout_seconds):
+            while True:
+                our_preview = getattr(p1, "pokecoach_preview_slots", ())
+                opponent_preview = getattr(p2, "pokecoach_preview_slots", ())
+                if len(our_preview) == 4 and len(opponent_preview) == 4:
+                    return (
+                        (int(our_preview[0]), int(our_preview[1])),
+                        (int(opponent_preview[0]), int(opponent_preview[1])),
+                    )
+                if p1.battles and p2.battles:
+                    our_battle = next(iter(p1.battles.values()))
+                    opponent_battle = next(iter(p2.battles.values()))
+                    try:
+                        return (
+                            _lead_slots_from_battle(our_battle, team_attr="team"),
+                            _lead_slots_from_battle(opponent_battle, team_attr="team"),
+                        )
+                    except (RuntimeError, ValueError):
+                        pass
+                await asyncio.sleep(0.05)
+    except TimeoutError as exc:
+        raise RuntimeError("PREVIEW_TIMEOUT: teams were not selected in time") from exc
+    finally:
+        battle_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await battle_task
+        for player in (p1, p2):
+            stop_listening = getattr(getattr(player, "ps_client", None), "stop_listening", None)
+            if callable(stop_listening):
+                with suppress(Exception):
+                    await asyncio.wait_for(stop_listening(), timeout=1)
+
+
+def _back_pair_from_preview_four(four: tuple[int, int, int, int]) -> tuple[int, int]:
+    a, b = int(four[2]), int(four[3])
+    return (a, b) if a < b else (b, a)
 
 
 async def _run_policy_preview_battle(
@@ -23,7 +75,6 @@ async def _run_policy_preview_battle(
     regulation: str,
     seed: int,
 ) -> dict[str, Any]:
-    ensure_showdown_available()
     p1, p2 = await create_policy_pair(
         checkpoint_path=checkpoint_path,
         our_snapshot=our_snapshot,
@@ -31,18 +82,80 @@ async def _run_policy_preview_battle(
         regulation=regulation,
         seed=seed,
     )
-    await p1.battle_against(p2, n_battles=1)
-    if not p1.battles:
-        raise RuntimeError("BATTLE_NO_STATE: no battle recorded")
-    our_battle = next(iter(p1.battles.values()))
-    opp_battle = next(iter(p2.battles.values()))
-    our_lead = _lead_slots_from_battle(our_battle, team_attr="team")
-    opp_lead = _lead_slots_from_battle(opp_battle, team_attr="team")
+    timeout = float(os.environ.get("POKECOACH_ENGINE_PREVIEW_LIFECYCLE_TIMEOUT", "30"))
+    our_lead, opp_lead = await _await_preview_selection(
+        p1,
+        p2,
+        timeout_seconds=timeout,
+    )
     return build_preview(
         opponent_lead=opp_lead,
         our_lead=our_lead,
         engine="vgc-bench",
     )
+
+
+def _lead_from_preview_slots(player: Any) -> tuple[int, int] | None:
+    preview = getattr(player, "pokecoach_preview_slots", ())
+    if len(preview) != 4:
+        return None
+    a, b = int(preview[0]), int(preview[1])
+    return (a, b) if a < b else (b, a)
+
+
+def _four_from_preview_slots(player: Any) -> tuple[int, int, int, int] | None:
+    preview = getattr(player, "pokecoach_preview_slots", ())
+    if len(preview) != 4:
+        return None
+    return (int(preview[0]), int(preview[1]), int(preview[2]), int(preview[3]))
+
+
+async def _forfeit_player_battle(player: Any, battle: Any) -> None:
+    client = getattr(player, "ps_client", None)
+    tag = getattr(battle, "battle_tag", None)
+    if client is None or not tag:
+        return
+    with suppress(Exception):
+        await client.send_message("/forfeit", tag)
+
+
+async def _battle_through_turn_one(
+    p1: Any,
+    p2: Any,
+    *,
+    timeout_seconds: float,
+) -> None:
+    """Play until turn 1 is resolved; forfeit as soon as turn > 1 (do not play out)."""
+    battle_task = asyncio.create_task(p1.battle_against(p2, n_battles=1))
+    forfeited = False
+    try:
+        async with asyncio.timeout(timeout_seconds):
+            while not battle_task.done():
+                if p1.battles:
+                    battle = next(iter(p1.battles.values()))
+                    if getattr(battle, "finished", False):
+                        break
+                    turn = int(getattr(battle, "turn", 0) or 0)
+                    if turn > 1 and not forfeited:
+                        await _forfeit_player_battle(p1, battle)
+                        if p2.battles:
+                            opp_battle = next(iter(p2.battles.values()))
+                            await _forfeit_player_battle(p2, opp_battle)
+                        forfeited = True
+                await asyncio.sleep(0.05)
+            await battle_task
+    except TimeoutError as exc:
+        battle_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await battle_task
+        raise RuntimeError(
+            f"FIRST_TURN_BATTLE_TIMEOUT: battle did not finish within {timeout_seconds}s"
+        ) from exc
+    finally:
+        if not battle_task.done():
+            battle_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await battle_task
 
 
 async def _run_first_turn_battle(
@@ -55,36 +168,65 @@ async def _run_first_turn_battle(
     opponent_lead: tuple[int, int],
     our_lead: tuple[int, int] | None,
 ) -> dict[str, Any]:
-    ensure_showdown_available()
+    imposed = _canonical_lead(opponent_lead)
     p1, p2 = await create_policy_pair(
         checkpoint_path=checkpoint_path,
         our_snapshot=our_snapshot,
         opponent_snapshot=opponent_snapshot,
         regulation=regulation,
         seed=seed,
+        our_imposed_lead=our_lead,
+        opponent_imposed_lead=imposed,
     )
-    await p1.battle_against(p2, n_battles=1)
+    lifecycle_timeout = float(
+        os.environ.get("POKECOACH_ENGINE_FIRST_TURN_LIFECYCLE_TIMEOUT", "120")
+    )
+    await _battle_through_turn_one(p1, p2, timeout_seconds=lifecycle_timeout)
     if not p1.battles:
         raise RuntimeError("BATTLE_NO_STATE: no battle recorded")
     battle = next(iter(p1.battles.values()))
-    turn = int(getattr(battle, "turn", 0) or 0)
-    if turn < 1:
+    if int(getattr(battle, "turn", 0) or 0) < 1:
         raise RuntimeError("TURN1_INCOMPLETE: battle ended before turn 1")
     if our_lead is None:
+        our_lead = _lead_from_preview_slots(p1)
+    if our_lead is None:
         our_lead = _lead_slots_from_battle(battle, team_attr="team")
+    our_four = _four_from_preview_slots(p1)
+    if our_four is None:
+        raise RuntimeError("PREVIEW_SLOTS_MISSING: our bring-4 not recorded")
+    opp_four = _four_from_preview_slots(p2)
+    if opp_four is None:
+        raise RuntimeError("PREVIEW_SLOTS_MISSING: opponent bring-4 not recorded")
+    if _canonical_lead((opp_four[0], opp_four[1])) != imposed:
+        raise ValueError("simulated lead rejection")
+    back_pair = _back_pair_from_preview_four(opp_four)
+    our_lead_order = (our_four[0], our_four[1])
     payload = extract_turn_one_payload(
         battle,
         our_snapshot=our_snapshot,
         opponent_snapshot=opponent_snapshot,
-        opponent_lead=opponent_lead,
+        opponent_lead=imposed,
         our_lead=our_lead,
+        opponent_back_pair=back_pair,
+        opponent_lead_order=(opp_four[0], opp_four[1]),
+        opponent_active_roster=opp_four,
+        our_active_roster=our_four,
+    )
+    our_actions = _actions_for_side(
+        battle,
+        side="ours",
+        lead_order=our_lead_order,
+        active_roster=our_four,
+        our_active_roster=our_four,
+        opp_active_roster=opp_four,
     )
     return build_turn_one(
-        opponent_lead=opponent_lead,
+        opponent_lead=imposed,
         our_lead=our_lead,
         actions=payload["actions"],
         back_pair=(payload["backPair"][0], payload["backPair"][1]),
         engine="vgc-bench",
+        our_actions=our_actions,
     )
 
 
@@ -98,13 +240,23 @@ async def _run_full_battle(
     opponent_lead: tuple[int, int],
     payload: dict[str, Any],
 ) -> dict[str, Any]:
-    ensure_showdown_available()
+    from pokecoach_vgc_bridge.fixture_sim import _resolve_our_lineup
+
+    imposed = _canonical_lead(opponent_lead)
+    our_lead_raw = payload.get("ourLeadSlots")
+    our_imposed = (
+        (int(our_lead_raw[0]), int(our_lead_raw[1]))
+        if our_lead_raw and len(our_lead_raw) == 2
+        else None
+    )
     p1, p2 = await create_policy_pair(
         checkpoint_path=checkpoint_path,
         our_snapshot=our_snapshot,
         opponent_snapshot=opponent_snapshot,
         regulation=regulation,
         seed=seed,
+        our_imposed_lead=our_imposed,
+        opponent_imposed_lead=imposed,
     )
     await p1.battle_against(p2, n_battles=1)
     if not p1.battles:
@@ -112,15 +264,43 @@ async def _run_full_battle(
     battle = next(iter(p1.battles.values()))
     if not getattr(battle, "finished", False):
         raise RuntimeError("BATTLE_NOT_TERMINAL: simulator did not report finished")
-    our_lead = _lead_slots_from_battle(battle, team_attr="team")
+    our_four, our_lead = _resolve_our_lineup(payload, seed, our_snapshot)
+    preview_four = _four_from_preview_slots(p1)
+    preview_lead = _lead_from_preview_slots(p1)
+    if preview_four is not None:
+        our_four = preview_four
+    if preview_lead is not None:
+        our_lead = preview_lead
+    opp_four = _four_from_preview_slots(p2)
+    opp_back = (
+        _back_pair_from_preview_four(opp_four) if opp_four is not None else None
+    )
     turn1 = extract_turn_one_payload(
         battle,
         our_snapshot=our_snapshot,
         opponent_snapshot=opponent_snapshot,
-        opponent_lead=opponent_lead,
+        opponent_lead=imposed,
         our_lead=our_lead,
+        opponent_back_pair=opp_back,
+        opponent_lead_order=(
+            (opp_four[0], opp_four[1]) if opp_four is not None else imposed
+        ),
+        opponent_active_roster=opp_four,
+        our_active_roster=preview_four if preview_four is not None else our_four,
     )
-    our_four, our_lead_resolved = _resolve_lineup(payload, seed, our_snapshot)
+    our_lead_order = (
+        (preview_four[0], preview_four[1]) if preview_four is not None else our_lead
+    )
+    our_roster = preview_four if preview_four is not None else our_four
+    opp_roster = opp_four
+    our_actions = _actions_for_side(
+        battle,
+        side="ours",
+        lead_order=our_lead_order,
+        active_roster=our_roster,
+        our_active_roster=our_roster,
+        opp_active_roster=opp_roster,
+    )
     if p1.n_won_battles > 0:
         outcome = "win"
     elif p1.n_lost_battles > 0:
@@ -129,10 +309,10 @@ async def _run_full_battle(
         outcome = "draw"
     else:
         raise RuntimeError("BATTLE_OUTCOME_UNKNOWN: no win/loss/tie recorded")
-    our_actions = _our_actions_from_turn1(our_snapshot, our_lead_resolved, seed)
-    return build_battle_record(
-        opponent_lead=opponent_lead,
-        our_lead=our_lead_resolved,
+    turn_count = int(getattr(battle, "turn", 1) or 1)
+    record = build_battle_record(
+        opponent_lead=imposed,
+        our_lead=our_lead,
         our_four=our_four,
         our_actions=our_actions,
         opponent_actions=turn1["actions"],
@@ -141,29 +321,10 @@ async def _run_full_battle(
         engine="vgc-bench",
         payload=payload,
     )
-
-
-def _resolve_lineup(
-    payload: dict[str, Any],
-    seed: int,
-    our: dict[str, Any],
-) -> tuple[tuple[int, int, int, int], tuple[int, int]]:
-    from pokecoach_vgc_bridge.fixture_sim import _resolve_our_lineup
-
-    return _resolve_our_lineup(payload, seed, our)
-
-
-def _our_actions_from_turn1(
-    our_snapshot: dict[str, Any],
-    our_lead: tuple[int, int],
-    seed: int,
-) -> list[dict[str, Any]]:
-    import hashlib
-
-    from pokecoach_vgc_bridge.fixture_sim import _our_turn1_actions
-
-    digest = hashlib.sha256(f"our-turn1:{seed}".encode()).digest()
-    return _our_turn1_actions(our_snapshot, our_lead, digest)
+    meta = dict(record.get("meta") or {})
+    meta["terminalEvidence"] = {"kind": "simulator", "turnCount": turn_count, "finished": True}
+    record["meta"] = meta
+    return record
 
 
 def run_preview_sync(**kwargs: Any) -> dict[str, Any]:

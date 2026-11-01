@@ -17,6 +17,7 @@ from pokecoach_python.core.config import Settings
 from pokecoach_python.engine.contracts import BattleRecord
 from pokecoach_python.engine.factory import build_engine_adapter
 from pokecoach_python.schemas.analysis_result import Phase
+from pokecoach_python.workflow.registry import phase_order
 from pokecoach_python.workflow.battle_records import (
     BATTLE_FORMAT_VERSION,
     battle_payload_dict,
@@ -149,6 +150,29 @@ class AnalysisRepository:
                 if updated.rowcount != 1:
                     raise ValueError("matchup not found or archived")
 
+    def load_matchup_snapshots(
+        self, matchup_id: uuid.UUID
+    ) -> tuple[dict[str, Any], dict[str, Any], str | None]:
+        with Session(self._engine) as session:
+            row = session.connection().execute(
+                text(
+                    """
+                    SELECT core.team_row_to_snapshot_v1(our_t),
+                           core.team_row_to_snapshot_v1(opp_t),
+                           m.regulation
+                    FROM core.matchups m
+                    JOIN core.teams our_t ON our_t.id = m.our_team_id
+                    JOIN core.teams opp_t ON opp_t.id = m.opponent_team_id
+                    WHERE m.id = :matchup_id
+                      AND NOT m.is_deleted
+                    """
+                ),
+                {"matchup_id": matchup_id},
+            ).first()
+            if row is None:
+                raise ValueError("matchup not found")
+            return dict(row[0]), dict(row[1]), row[2]
+
     def record_start_command(
         self,
         *,
@@ -262,7 +286,7 @@ class AnalysisRepository:
                 completed = partial.get("completedPhases") or []
                 if not completed:
                     raise ValueError("nothing completed to continue from")
-                order = ["A", "B", "C", "D", "synthesis"]
+                order = list(phase_order())
                 if target_phase not in order:
                     raise ValueError("invalid target")
                 if order.index(target_phase) <= order.index(old_target):
@@ -464,6 +488,13 @@ class AnalysisRepository:
         expected_opponent_lead: tuple[int, int],
     ) -> uuid.UUID:
         validate_terminal_battle(record, expected_opponent_lead=expected_opponent_lead)
+        if self._settings.engine_mode.lower() == "vgc_bench":
+            from pokecoach_python.workflow.battle_records import validate_real_engine_battle
+
+            validate_real_engine_battle(
+                record,
+                expected_engine="vgc-bench",
+            )
         payload = battle_payload_dict(record)
         digest = battle_payload_sha256(payload)
         payload_json = json.dumps(payload)

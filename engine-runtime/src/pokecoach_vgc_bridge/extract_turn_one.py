@@ -2,7 +2,70 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
+
+# Showdown move ids without separators (replay / poke-env ids).
+_MOVE_ID_ALIASES: dict[str, str] = {
+    "dualwingbeat": "Dual Wingbeat",
+    "closecombat": "Close Combat",
+    "bravebird": "Brave Bird",
+    "fakeout": "Fake Out",
+    "partingshot": "Parting Shot",
+    "throatchop": "Throat Chop",
+    "knockoff": "Knock Off",
+    "highhorsepower": "High Horsepower",
+    "rockslide": "Rock Slide",
+    "ironhead": "Iron Head",
+    "moonblast": "Moonblast",
+    "dazzlinggleam": "Dazzling Gleam",
+    "hypervoice": "Hyper Voice",
+    "electroweb": "Electroweb",
+    "helpinghand": "Helping Hand",
+    "followme": "Follow Me",
+    "ragepowder": "Rage Powder",
+    "trickroom": "Trick Room",
+    "tailwind": "Tailwind",
+    "protect": "Protect",
+    "wideguard": "Wide Guard",
+    "quickguard": "Quick Guard",
+}
+
+_FIELD_MOVE_IDS = frozenset(
+    {
+        "tailwind",
+        "trickroom",
+        "raindance",
+        "sunnyday",
+        "snowscape",
+        "hail",
+        "gravity",
+        "wonderroom",
+        "magicroom",
+        "lightscreen",
+        "reflect",
+        "auroraveil",
+        "helpinghand",
+        "followme",
+        "ragepowder",
+    }
+)
+
+_SELF_TARGET_MOVE_IDS = frozenset(
+    {
+        "protect",
+        "detect",
+        "spikyshield",
+        "banefulbunker",
+        "kingsshield",
+        "obstruct",
+        "silktrap",
+        "burningbulwark",
+        "endure",
+        "wideguard",
+        "quickguard",
+    }
+)
 
 
 def extract_turn_one_payload(
@@ -12,11 +75,26 @@ def extract_turn_one_payload(
     opponent_snapshot: dict[str, Any],
     opponent_lead: tuple[int, int],
     our_lead: tuple[int, int],
+    opponent_back_pair: tuple[int, int] | None = None,
+    opponent_lead_order: tuple[int, int] | None = None,
+    opponent_active_roster: tuple[int, int, int, int] | None = None,
+    our_active_roster: tuple[int, int, int, int] | None = None,
 ) -> dict[str, Any]:
     """Build turn-1 payload from battle state after turn 1 resolved."""
     _ = our_snapshot, opponent_snapshot
-    opp_actions = _actions_for_side(battle, side="opponent", lead=opponent_lead)
-    back_pair = _back_pair_from_team(battle, lead=opponent_lead)
+    lead_order = opponent_lead_order or opponent_lead
+    opp_actions = _actions_for_side(
+        battle,
+        side="opponent",
+        lead_order=lead_order,
+        active_roster=opponent_active_roster,
+        our_active_roster=our_active_roster,
+        opp_active_roster=opponent_active_roster,
+    )
+    if opponent_back_pair is not None:
+        back_pair = opponent_back_pair
+    else:
+        back_pair = _back_pair_from_team(battle, lead=opponent_lead)
     return {
         "actions": opp_actions,
         "backPair": list(back_pair),
@@ -25,59 +103,285 @@ def extract_turn_one_payload(
     }
 
 
+def _mon_for_roster_slot(
+    team: list[Any],
+    roster_slot: int,
+    active_roster: tuple[int, ...] | None,
+) -> Any:
+    if roster_slot < 0 or roster_slot >= 6:
+        raise RuntimeError(
+            f"TURN1_EXTRACT: lead slot {roster_slot} out of roster range"
+        )
+    if len(team) >= 6:
+        if roster_slot >= len(team):
+            raise RuntimeError(
+                f"TURN1_EXTRACT: lead slot {roster_slot} out of team range (size={len(team)})"
+            )
+        return team[roster_slot]
+    if active_roster is None:
+        raise RuntimeError(
+            f"TURN1_EXTRACT: lead slot {roster_slot} out of team range (size={len(team)})"
+        )
+    if roster_slot not in active_roster:
+        raise RuntimeError(
+            f"TURN1_EXTRACT: roster slot {roster_slot} not in active bring-4 {active_roster}"
+        )
+    team_idx = active_roster.index(roster_slot)
+    if team_idx >= len(team):
+        raise RuntimeError(
+            f"TURN1_EXTRACT: mapped index {team_idx} out of team range (size={len(team)})"
+        )
+    return team[team_idx]
+
+
 def _actions_for_side(
     battle: Any,
     *,
     side: str,
-    lead: tuple[int, int],
+    lead_order: tuple[int, int],
+    active_roster: tuple[int, ...] | None = None,
+    our_active_roster: tuple[int, ...] | None = None,
+    opp_active_roster: tuple[int, ...] | None = None,
 ) -> list[dict[str, Any]]:
+    target_side = "ours" if side == "opponent" else "opponent"
+    from_replay = _turn1_actions_from_replay(
+        battle,
+        side=side,
+        lead_order=lead_order,
+        target_side=target_side,
+        our_active_roster=our_active_roster,
+        opp_active_roster=opp_active_roster,
+    )
+    if from_replay is not None:
+        return from_replay
+
     if side == "opponent":
-        active = getattr(battle, "opponent_active_pokemon", None) or []
         team = list(getattr(battle, "opponent_team", {}).values())
     else:
-        active = getattr(battle, "active_pokemon", None) or []
         team = list(getattr(battle, "team", {}).values())
+
     actions: list[dict[str, Any]] = []
-    for mon in active[:2]:
-        slot = _slot_index(team, mon)
-        if slot is None:
-            slot = lead[len(actions)] if len(actions) < 2 else 0
+    for slot in lead_order:
+        mon = _mon_for_roster_slot(team, int(slot), active_roster)
         move = _move_label(mon)
-        actions.append(
-            {
-                "kind": "move",
-                "actor": {"side": side, "slot": slot},
-                "move": move,
-                "targets": [
-                    {
-                        "kind": "pokemon",
-                        "ref": {
-                            "side": "ours" if side == "opponent" else "opponent",
-                            "slot": 0,
-                        },
-                    }
-                ],
-            }
+        targets = _targets_for_move(
+            move,
+            actor_side=side,
+            actor_slot=int(slot),
+            target_side=target_side,
+            target_roster_slot=None,
         )
-    if len(actions) < 2:
-        raise RuntimeError("TURN1_EXTRACT: fewer than two actions recorded")
+        actions.append(
+            _move_action(side=side, slot=int(slot), move=move, targets=targets),
+        )
+    if len(actions) != 2:
+        raise RuntimeError("TURN1_EXTRACT: expected two lead actions")
     return actions
 
 
-def _slot_index(team: list[Any], mon: Any) -> int | None:
+def _turn1_actions_from_replay(
+    battle: Any,
+    *,
+    side: str,
+    lead_order: tuple[int, int],
+    target_side: str,
+    our_active_roster: tuple[int, ...] | None,
+    opp_active_roster: tuple[int, ...] | None,
+) -> list[dict[str, Any]] | None:
+    replay = getattr(battle, "_replay_data", None)
+    if not replay:
+        return None
+    prefix = "p2" if side == "opponent" else "p1"
+    target_prefix = "p1" if side == "opponent" else "p2"
+    turn = 0
+    moves: dict[str, tuple[str, str | None]] = {}
+
+    for split in replay:
+        if len(split) < 2:
+            continue
+        kind = split[1]
+        if kind == "turn":
+            try:
+                turn = int(split[2])
+            except (IndexError, ValueError):
+                turn += 1
+            if turn > 1:
+                break
+            continue
+        if kind != "move":
+            continue
+        effective_turn = turn if turn >= 1 else 1
+        if effective_turn > 1:
+            continue
+        ident = split[2]
+        if not ident.startswith(f"{prefix}a:") and not ident.startswith(f"{prefix}b:"):
+            continue
+        role = "a" if ident.startswith(f"{prefix}a:") else "b"
+        if role in moves:
+            continue
+        move_raw = split[3] if len(split) > 3 else ""
+        move = _normalize_showdown_move_name(move_raw)
+        target_token = split[4] if len(split) > 4 else None
+        moves[role] = (move, target_token)
+
+    if "a" not in moves or "b" not in moves:
+        return None
+
+    slot_a, slot_b = int(lead_order[0]), int(lead_order[1])
+    out: list[dict[str, Any]] = []
+    for role, slot in (("a", slot_a), ("b", slot_b)):
+        move, target_token = moves[role]
+        target_roster = _target_roster_slot_from_token(
+            battle,
+            target_token,
+            target_side=target_side,
+            our_active_roster=our_active_roster,
+            opp_active_roster=opp_active_roster,
+        )
+        targets = _targets_for_move(
+            move,
+            actor_side=side,
+            actor_slot=slot,
+            target_side=target_side,
+            target_roster_slot=target_roster,
+            target_token=target_token,
+            actor_prefix=prefix,
+        )
+        out.append(_move_action(side=side, slot=slot, move=move, targets=targets))
+    return out
+
+
+def _target_roster_slot_from_token(
+    battle: Any,
+    token: str | None,
+    *,
+    target_side: str,
+    our_active_roster: tuple[int, ...] | None,
+    opp_active_roster: tuple[int, ...] | None,
+) -> int | None:
+    if not token or token.startswith("[") or token in {"all", "shift"}:
+        return None
+    if not (token.startswith("p1") or token.startswith("p2")):
+        return None
+    try:
+        mon = battle.get_pokemon(token)
+    except Exception:
+        return None
+    if target_side == "ours":
+        team = list(getattr(battle, "team", {}).values())
+        active = our_active_roster
+    else:
+        team = list(getattr(battle, "opponent_team", {}).values())
+        active = opp_active_roster
     for idx, candidate in enumerate(team):
         if candidate is mon:
+            if len(team) >= 6:
+                return idx
+            if active and idx < len(active):
+                return int(active[idx])
             return idx
     return None
 
 
+def _move_id_key(move: str) -> str:
+    return move.strip().lower().replace("-", "").replace(" ", "")
+
+
+def _targets_for_move(
+    move: str,
+    *,
+    actor_side: str,
+    actor_slot: int,
+    target_side: str,
+    target_roster_slot: int | None,
+    target_token: str | None = None,
+    actor_prefix: str | None = None,
+) -> list[dict[str, Any]]:
+    move_key = _move_id_key(move)
+    if target_roster_slot is not None:
+        return [
+            {
+                "kind": "pokemon",
+                "ref": {"side": target_side, "slot": target_roster_slot},
+            }
+        ]
+    if target_token and actor_prefix and target_token.startswith(f"{actor_prefix}"):
+        return [
+            {
+                "kind": "pokemon",
+                "ref": {"side": actor_side, "slot": actor_slot},
+            }
+        ]
+    if move_key in _SELF_TARGET_MOVE_IDS:
+        return [
+            {
+                "kind": "pokemon",
+                "ref": {"side": actor_side, "slot": actor_slot},
+            }
+        ]
+    if move_key in _FIELD_MOVE_IDS:
+        return [{"kind": "zone", "zone": "field"}]
+    if move == "Unknown" or not move_key:
+        return [{"kind": "zone", "zone": "field"}]
+    # Spread / multi-hit without explicit target in replay
+    if move_key in {"electroweb", "snarl", "breakingswipe", "bulldoze", "hypervoice"}:
+        return [{"kind": "zone", "zone": "all-opponents"}]
+    return [{"kind": "zone", "zone": "field"}]
+
+
+def _move_action(
+    *,
+    side: str,
+    slot: int,
+    move: str,
+    targets: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if move.lower() in {"switch", "pass"} or move.startswith("Switch"):
+        switch_slot = 0
+        if targets and targets[0].get("kind") == "pokemon":
+            switch_slot = int(targets[0]["ref"]["slot"])
+        return {
+            "kind": "switch",
+            "actor": {"side": side, "slot": slot},
+            "switchTo": {"side": side, "slot": switch_slot},
+        }
+    return {
+        "kind": "move",
+        "actor": {"side": side, "slot": slot},
+        "move": move,
+        "targets": targets,
+    }
+
+
+def _normalize_showdown_move_name(raw: str) -> str:
+    name = raw.strip()
+    if not name:
+        return "Unknown"
+    key = name.lower().replace("-", "").replace(" ", "")
+    if key in _MOVE_ID_ALIASES:
+        return _MOVE_ID_ALIASES[key]
+    if name.lower() == "unknown":
+        return "Unknown"
+    if name.lower().startswith("hiddenpower"):
+        return "Hidden Power"
+    if " " in name or "-" in name:
+        return name.replace("-", " ")
+    spaced = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name)
+    if spaced != name:
+        return spaced
+    return name.replace("_", " ").title()
+
+
 def _move_label(mon: Any) -> str:
-    for attr in ("last_move", "prepared_move", "move"):
+    for move in getattr(mon, "moves", {}).values():
+        if getattr(move, "is_last_used", False):
+            label = getattr(move, "name", None) or getattr(move, "id", None) or move
+            return _normalize_showdown_move_name(str(label))
+    for attr in ("last_move", "prepared_move"):
         val = getattr(mon, attr, None)
         if val is not None:
-            if hasattr(val, "id"):
-                return str(val.id).replace("_", " ").title()
-            return str(val)
+            label = getattr(val, "name", None) or getattr(val, "id", None) or val
+            return _normalize_showdown_move_name(str(label))
     return "Unknown"
 
 

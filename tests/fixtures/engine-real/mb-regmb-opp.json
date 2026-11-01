@@ -1,0 +1,22 @@
+{
+  "pokemon": [
+    {
+      "rawBlock": "Aerodactyl (M) @ Aerodactylite\nAbility: Unnerve\nEVs: 16 HP / 13 Atk / 5 SpD / 32 Spe\nJolly Nature\n- Rock Slide\n- Dual Wingbeat\n- Ice Fang\n- Tailwind"
+    },
+    {
+      "rawBlock": "Raichu (M) @ Raichunite Y\nAbility: Lightning Rod\nEVs: 32 HP / 3 Def / 2 SpA / 5 SpD / 24 Spe\nTimid Nature\n- Zap Cannon\n- Focus Blast\n- Fake Out\n- Protect"
+    },
+    {
+      "rawBlock": "Garchomp (M) @ Life Orb\nAbility: Rough Skin\nLevel: 50\nEVs: 2 HP / 32 Atk / 32 Spe\nJolly Nature\n- Dragon Claw\n- Earthquake\n- Rock Slide\n- Protect"
+    },
+    {
+      "rawBlock": "Sylveon (M) @ Fairy Feather\nAbility: Pixilate\nLevel: 50\nModest Nature\n- Hyper Voice\n- Hyper Beam\n- Quick Attack\n- Detect"
+    },
+    {
+      "rawBlock": "Meowscarada (M) @ Choice Scarf\nAbility: Protean\nEVs: 1 HP / 32 Atk / 1 Def / 32 Spe\nJolly Nature\n- Flower Trick\n- Throat Chop\n- Triple Axel\n- Low Kick"
+    },
+    {
+      "rawBlock": "Kingambit (F) @ Focus Sash\nAbility: Defiant\nEVs: 2 HP / 32 Atk / 32 Spe\nJolly Nature\n- Kowtow Cleave\n- Iron Head\n- Low Kick\n- Sucker Punch"
+    }
+  ]
+}

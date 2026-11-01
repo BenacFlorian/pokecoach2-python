@@ -2,6 +2,8 @@
 
 Ces documents préparent le développement ; ils ne signifient pas que le serveur ou les simulations sont déjà implémentés.
 
+Évolution validée le 1er novembre 2026 : [plan backend 10 — ouvertures conditionnées à notre sélection](plans/2026-11-01-10-ouvertures-conditionnees-au-lead.md), puis [plan frontend 5](../../pokecoach2-angular/docs/plans/2026-11-01-05-ouvertures-conditionnees-lead-pick.md). Ils couvrent **A → C → B → D**, le remplacement du contrat actuel après nettoyage des anciennes analyses et les tours 1 des deux côtés pour notre quatre/lead fixes. **E est hors périmètre** : son plan dédié reste à implémenter et viendra conclure le processus. Les plans historiques ci-dessous décrivent l’ancien ordre jusqu’à l’application de cette évolution.
+
 1. [Initialisation Python](plans/2026-10-31-01-python-initialisation.md) — Devbox, uv, FastAPI, connexion PostgreSQL et image pour la stack existante.
 2. [Route de démonstration](plans/2026-10-31-02-python-demo-seed.md) — réinstallation complète de la seed via FastAPI, appel Angular et relecture PostGraphile.
 3. [Adaptations du système existant](plans/2026-10-31-03-adaptations-resultats-progressifs.md) — tout le §10 de la spec : SQL, droits, contrats v2, résultats partiels et lecteur Angular.
@@ -14,12 +16,12 @@ Ces documents préparent le développement ; ils ne signifient pas que le serveu
 
 Complément au socle : [plan 04b — moteur réel VGC-Bench](plans/2026-10-31-04b-moteur-reel-vgc-bench.md), à réaliser **avant le plan 09 LLM**. Il raccorde preview, tour 1 et combats complets, puis fait rejouer les recettes B/C/D avec le checkpoint BC.
 
-État moteur (plan 04b en cours) : protocole subprocess, bridge `engine-runtime/`, plus de repli stub dans `VgcBenchEngineAdapter`. Le runtime BC + Showdown (`vgc_real`) reste à brancher une fois VGC-Bench installé dans le venv moteur ; le bridge **fixture** (`POKECOACH_BRIDGE_FIXTURE=1`) sert aux tests et au diagnostic sans Torch. Recette : [moteur-reel.md](recettes/moteur-reel.md).
+État moteur (plan 04b) : subprocess JSONL, bridge `engine-runtime/` (`fixture` CI + `vgc_real` si deps), phases **A–D** sur combats Showdown+BC quand `POKECOACH_ENGINE=vgc_bench`. Clôture : [cloture-04b.md](recettes/cloture-04b.md). Recette : [moteur-reel.md](recettes/moteur-reel.md), audit : [audits/vgc-bench.md](audits/vgc-bench.md).
 
-Pour reprendre le développement actuel : terminer 04b, rejouer A–D avec des **nouveaux runs réels**, puis réaliser E. La [spécification du workflow réel](specs/2026-10-31-workflow-analyse-matchup.md) définit le contrat commun. Ne pas continuer un run créé avec le stub en basculant simplement le `.env` vers le moteur réel.
+Pour reprendre le développement actuel : valider 04b avec un run réel A→D (checkpoint + Showdown), puis réaliser E. La [spécification du workflow réel](specs/2026-10-31-workflow-analyse-matchup.md) définit le contrat commun. Ne pas continuer un run créé avec le stub en basculant simplement le `.env` vers le moteur réel.
 
 Après chaque plan A/B/C/D, lancer le process jusqu’à la phase concernée : le même run stocke son résultat partiel, se met en pause et reste consultable après rechargement du frontend. Le plan suivant le continue et l’enrichit sans recalculer ses phases validées. E ajoute uniquement le plan global et la win condition, puis publie le rapport complet.
 
-Chaque plan de phase se termine par une recette avec les vrais services : profil `smoke` pour vérifier le câblage, puis budget `standard`. La dernière recette teste aussi un run neuf de A à E sans pause. Les points 1–4 ne dépendent jamais du LLM.
+Chaque plan de phase se termine par une recette avec les vrais services : profil `smoke` pour vérifier le câblage, puis budget `standard`. Les effectifs par phase sont centralisés dans [`src/pokecoach_python/simulation_budgets.py`](../src/pokecoach_python/simulation_budgets.py). La dernière recette teste aussi un run neuf de A à E sans pause. Les points 1–4 ne dépendent jamais du LLM.
 
 Le choix validé pour la démonstration est de **réinstaller la seed complète**, pas d’associer le rapport fictif à n’importe quel matchup choisi dans l’interface.

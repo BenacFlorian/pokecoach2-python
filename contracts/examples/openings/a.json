@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 2,
+  "source": "simulation",
+  "completedPhases": ["A"],
+  "opponentLeads": {
+    "sampleSize": 100,
+    "leads": [
+      {"id": "lead-0-1", "slots": [0, 1], "count": 42},
+      {"id": "lead-2-3", "slots": [2, 3], "count": 18}
+    ]
+  },
+  "leadPick": null,
+  "openings": null,
+  "refinement": null,
+  "gameplan": null,
+  "winCondition": null
+}

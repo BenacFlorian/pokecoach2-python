@@ -31,8 +31,8 @@ def _ctx(profile: str, target: str, partial: dict, seed: int = 19) -> PhaseConte
 def test_smoke_run_through_d_adds_refinement():
     partial: dict = {"completedPhases": []}
     partial = run_phase_a(_ctx("smoke", "A", partial)).result.model_dump(mode="json")
-    partial = run_phase_b(_ctx("smoke", "B", partial)).result.model_dump(mode="json")
     partial = run_phase_c(_ctx("smoke", "C", partial)).result.model_dump(mode="json")
+    partial = run_phase_b(_ctx("smoke", "B", partial)).result.model_dump(mode="json")
     out = run_phase_d(_ctx("smoke", "D", partial))
     ref = out.result.refinement
     assert ref is not None

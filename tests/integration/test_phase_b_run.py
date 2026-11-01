@@ -1,10 +1,11 @@
-"""Integration-style tests for phase B on top of phase A."""
+"""Integration-style tests for phase B on top of phases A and C."""
 
 from __future__ import annotations
 
 from pokecoach_python.engine.stub_adapter import StubEngineAdapter
 from pokecoach_python.workflow.phases.phase_a import run_phase_a
 from pokecoach_python.workflow.phases.phase_b import run_phase_b
+from pokecoach_python.workflow.phases.phase_c import run_phase_c
 from pokecoach_python.workflow.types import PhaseContext
 
 
@@ -26,11 +27,17 @@ def _ctx(profile: str, target: str, partial: dict, seed: int = 7) -> PhaseContex
     )
 
 
-def test_smoke_run_a_then_b_enriches_all_leads():
+def test_smoke_run_ac_then_b_adds_openings():
     phase_a = run_phase_a(_ctx("smoke", "A", {"completedPhases": []}))
     partial = phase_a.result.model_dump(mode="json")
-    phase_b = run_phase_b(_ctx("smoke", "B", partial))
-    assert phase_b.result.completedPhases == ["A", "B"]
+    phase_c = run_phase_c(_ctx("smoke", "C", partial))
+    partial_ac = phase_c.result.model_dump(mode="json")
+    phase_b = run_phase_b(_ctx("smoke", "B", partial_ac))
+    assert phase_b.result.completedPhases == ["A", "C", "B"]
+    openings = phase_b.result.openings
+    assert openings is not None
     leads = phase_b.result.opponentLeads
     assert leads is not None
-    assert all(entry.turn1 is not None and entry.turn1.sampleSize == 3 for entry in leads.leads)
+    assert len(openings.byOpponentLead) == len(leads.leads)
+    assert all(entry.sampleSize == 3 for entry in openings.byOpponentLead)
+    assert openings.selection == phase_c.result.leadPick.selection  # type: ignore[union-attr]

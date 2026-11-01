@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import sys
+import time
+
 import pytest
 
 from pokecoach_python.core.config import Settings, reset_settings_cache
-from pokecoach_python.engine.errors import EngineUnavailableError
+from pokecoach_python.engine.errors import EngineBridgeError, EngineUnavailableError
+from pokecoach_python.engine.subprocess_client import VgcSubprocessClient
 from pokecoach_python.engine.vgc_bench_adapter import VgcBenchEngineAdapter
 
 
@@ -65,9 +69,12 @@ def test_fixture_bridge_preflight_and_preview(fixture_env):
                 seed=42,
                 timeout_seconds=5.0,
                 opponent_lead=preview.opponent_lead_slots,
+                our_selection=(0, 1, 2, 3),
+                our_lead_slots=preview.our_lead_slots or (0, 1),
             )
         )
-        assert turn1.payload["actions"]
+        assert turn1.payload.get("opponentActions") or turn1.payload.get("actions")
+        assert len(turn1.payload.get("ourActions") or []) == 2
         battle = engine.full_battle(
             SimulationRequest(
                 our_snapshot=SAMPLE_SNAPSHOT,
@@ -89,6 +96,37 @@ def test_vgc_bench_requires_checkpoint_without_fixture(monkeypatch):
     monkeypatch.delenv("POKECOACH_BRIDGE_FIXTURE", raising=False)
     monkeypatch.setenv("POSTGRES_PASSWORD", "test")
     reset_settings_cache()
-    settings = Settings(POKECOACH_ENGINE="vgc_bench", POSTGRES_PASSWORD="test")
+    settings = Settings(
+        POKECOACH_ENGINE="vgc_bench",
+        POSTGRES_PASSWORD="test",
+        VGC_CHECKPOINT_PATH="",
+    )
     with pytest.raises(EngineUnavailableError):
         VgcBenchEngineAdapter(settings)
+
+
+def test_bridge_close_terminates_process(fixture_env):
+    settings = Settings(POKECOACH_ENGINE="vgc_bench", POSTGRES_PASSWORD="test")
+    engine = VgcBenchEngineAdapter(settings)
+    engine.hello()
+    client = engine._client
+    proc = client._proc
+    assert proc is not None
+    engine.close()
+    assert proc.poll() is not None
+
+
+def test_bridge_request_timeout_does_not_wait_for_blocked_reader():
+    settings = Settings(POSTGRES_PASSWORD="test")
+    client = VgcSubprocessClient(
+        settings,
+        argv=[sys.executable, "-c", "import time; time.sleep(5)"],
+    )
+    started = time.monotonic()
+    try:
+        with pytest.raises(EngineBridgeError) as exc_info:
+            client.request("hello", {}, timeout_seconds=0.05)
+        assert exc_info.value.code == "BRIDGE_TIMEOUT"
+        assert time.monotonic() - started < 1
+    finally:
+        client.close()

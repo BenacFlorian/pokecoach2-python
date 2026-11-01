@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 2,
+  "source": "simulation",
+  "completedPhases": ["A", "C", "B"],
+  "opponentLeads": {
+    "sampleSize": 100,
+    "leads": [
+      {"id": "lead-0-1", "slots": [0, 1], "count": 42},
+      {"id": "lead-2-3", "slots": [2, 3], "count": 18}
+    ]
+  },
+  "leadPick": {
+    "selection": {"ourFourSlots": [0, 1, 4, 5], "ourLeadSlots": [0, 1]},
+    "comparisons": [
+      {
+        "opponentLeadId": "lead-0-1",
+        "ourFourSlots": [0, 1, 4, 5],
+        "ourLeadSlots": [0, 1],
+        "wins": 3,
+        "losses": 1,
+        "draws": 0,
+        "sampleSize": 4
+      }
+    ],
+    "selectionRuleVersion": "selection-v1",
+    "limitations": ["Effectifs faibles : interpréter la recommandation avec prudence."]
+  },
+  "openings": {
+    "selection": {"ourFourSlots": [0, 1, 4, 5], "ourLeadSlots": [0, 1]},
+    "recommendationRule": "model-frequency-v1",
+    "samplingPolicy": "conditional-back-v1",
+    "byOpponentLead": [
+      {
+        "opponentLeadId": "lead-0-1",
+        "opponentLeadSlots": [0, 1],
+        "sampleSize": 5,
+        "opponentActions": [
+          {
+            "value": [
+              {
+                "kind": "move",
+                "actor": {"side": "opponent", "slot": 0},
+                "move": "Hyper Voice",
+                "targets": [{"kind": "pokemon", "ref": {"side": "ours", "slot": 4}}]
+              },
+              {
+                "kind": "move",
+                "actor": {"side": "opponent", "slot": 1},
+                "move": "Knock Off",
+                "targets": [{"kind": "pokemon", "ref": {"side": "ours", "slot": 5}}]
+              }
+            ],
+            "count": 3,
+            "sampleSize": 5
+          },
+          {
+            "value": [
+              {
+                "kind": "switch",
+                "actor": {"side": "opponent", "slot": 0},
+                "switchTo": {"side": "opponent", "slot": 2}
+              },
+              {
+                "kind": "move",
+                "actor": {"side": "opponent", "slot": 1},
+                "move": "Protect",
+                "targets": [{"kind": "pokemon", "ref": {"side": "ours", "slot": 0}}]
+              }
+            ],
+            "count": 2,
+            "sampleSize": 5
+          }
+        ],
+        "ourActions": [
+          {
+            "value": [
+              {
+                "kind": "move",
+                "actor": {"side": "ours", "slot": 0},
+                "move": "Moonblast",
+                "targets": [{"kind": "pokemon", "ref": {"side": "opponent", "slot": 0}}]
+              },
+              {
+                "kind": "move",
+                "actor": {"side": "ours", "slot": 1},
+                "move": "Fake Out",
+                "targets": [{"kind": "pokemon", "ref": {"side": "opponent", "slot": 1}}]
+              }
+            ],
+            "count": 4,
+            "sampleSize": 5
+          },
+          {
+            "value": [
+              {
+                "kind": "move",
+                "actor": {"side": "ours", "slot": 0},
+                "move": "Protect",
+                "targets": [{"kind": "pokemon", "ref": {"side": "opponent", "slot": 0}}]
+              },
+              {
+                "kind": "move",
+                "actor": {"side": "ours", "slot": 1},
+                "move": "Parting Shot",
+                "targets": [{"kind": "pokemon", "ref": {"side": "opponent", "slot": 1}}]
+              }
+            ],
+            "count": 1,
+            "sampleSize": 5
+          }
+        ],
+        "recommendation": {
+          "value": [
+            {
+              "kind": "move",
+              "actor": {"side": "ours", "slot": 0},
+              "move": "Moonblast",
+              "targets": [{"kind": "pokemon", "ref": {"side": "opponent", "slot": 0}}]
+            },
+            {
+              "kind": "move",
+              "actor": {"side": "ours", "slot": 1},
+              "move": "Fake Out",
+              "targets": [{"kind": "pokemon", "ref": {"side": "opponent", "slot": 1}}]
+            }
+          ],
+          "count": 4,
+          "sampleSize": 5
+        },
+        "backPairs": [
+          {"value": [2, 3], "count": 3, "sampleSize": 5},
+          {"value": [2, 4], "count": 2, "sampleSize": 5}
+        ],
+        "backSlotMarginals": [
+          {"value": 2, "count": 5, "sampleSize": 5, "marginalBasis": "per-slot-in-back-pair"},
+          {"value": 3, "count": 3, "sampleSize": 5, "marginalBasis": "per-slot-in-back-pair"},
+          {"value": 4, "count": 2, "sampleSize": 5, "marginalBasis": "per-slot-in-back-pair"}
+        ],
+        "endStateNotes": []
+      },
+      {
+        "opponentLeadId": "lead-2-3",
+        "opponentLeadSlots": [2, 3],
+        "sampleSize": 5,
+        "opponentActions": [],
+        "ourActions": [],
+        "recommendation": {"value": [], "count": 1, "sampleSize": 5},
+        "backPairs": [{"value": [0, 4], "count": 5, "sampleSize": 5}],
+        "backSlotMarginals": [
+          {"value": 0, "count": 5, "sampleSize": 5, "marginalBasis": "per-slot-in-back-pair"},
+          {"value": 4, "count": 5, "sampleSize": 5, "marginalBasis": "per-slot-in-back-pair"}
+        ],
+        "endStateNotes": []
+      }
+    ]
+  },
+  "refinement": null,
+  "gameplan": null,
+  "winCondition": null
+}

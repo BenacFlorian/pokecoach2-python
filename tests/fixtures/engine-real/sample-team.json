@@ -1,0 +1,10 @@
+{
+  "pokemon": [
+    {"name": "Incineroar", "moves": ["Fake Out", "Knock Off", "Parting Shot", "Flare Blitz"]},
+    {"name": "Rillaboom", "moves": ["Grassy Glide", "Wood Hammer", "U-turn", "Fake Out"]},
+    {"name": "Flutter Mane", "moves": ["Moonblast", "Dazzling Gleam", "Shadow Ball", "Protect"]},
+    {"name": "Landorus", "moves": ["Earth Power", "Sludge Bomb", "Protect", "U-turn"]},
+    {"name": "Urshifu-Rapid-Strike", "moves": ["Surging Strikes", "Close Combat", "Aqua Jet", "Protect"]},
+    {"name": "Amoonguss", "moves": ["Spore", "Rage Powder", "Pollen Puff", "Protect"]}
+  ]
+}

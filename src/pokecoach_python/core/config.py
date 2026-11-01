@@ -13,7 +13,11 @@ from sqlalchemy.engine import URL
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    _ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
+    model_config = SettingsConfigDict(
+        env_file=str(_ENV_FILE) if _ENV_FILE.is_file() else ".env",
+        extra="ignore",
+    )
 
     app_env: Literal["local", "container"] = Field(alias="APP_ENV", default="local")
     postgres_host: str = Field(alias="POSTGRES_HOST", default="127.0.0.1")
@@ -29,7 +33,7 @@ class Settings(BaseSettings):
     )
     analysis_deployed_phases: str = Field(
         alias="ANALYSIS_DEPLOYED_PHASES",
-        default="A,B,C,D,synthesis",
+        default="A,C,B,D,synthesis",
     )
     analysis_checkpoint_id: str = Field(
         alias="ANALYSIS_CHECKPOINT_ID",
@@ -37,7 +41,7 @@ class Settings(BaseSettings):
     )
     analysis_preview_timeout_seconds: float = Field(
         alias="ANALYSIS_PREVIEW_TIMEOUT_SECONDS",
-        default=30.0,
+        default=90.0,
     )
     engine_mode: str = Field(alias="POKECOACH_ENGINE", default="stub")
     vgc_bench_root: str | None = Field(alias="VGC_BENCH_ROOT", default=None)

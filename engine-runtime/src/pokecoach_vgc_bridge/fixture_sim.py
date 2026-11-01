@@ -76,23 +76,20 @@ class FixtureRuntime:
         opp_lead = (int(lead[0]), int(lead[1]))
         if opp_lead[0] == opp_lead[1]:
             raise ValueError("invalid opponentLead")
-        our_lead_raw = payload.get("ourLeadSlots")
-        if our_lead_raw and len(our_lead_raw) == 2:
-            our_lead = (int(our_lead_raw[0]), int(our_lead_raw[1]))
-        else:
-            digest = _digest(f"preview:{seed}", our, opp)
-            our_lead = _pick_pair(digest, 2)
+        our_four, our_lead = _resolve_our_lineup(payload, seed, our)
         digest = _digest(f"first-turn:{seed}:{opp_lead}", our, opp)
         if digest[0] == 255:
             raise ValueError("simulated preview rejection")
         back_pair = _back_pair(opp_lead, digest[3])
-        actions = _opponent_turn1_actions(opp, opp_lead, digest)
+        opp_actions = _opponent_turn1_actions(opp, opp_lead, digest)
+        our_actions = _our_turn1_actions(our, our_lead, digest)
         return build_turn_one(
             opponent_lead=opp_lead,
             our_lead=our_lead,
-            actions=actions,
+            actions=opp_actions,
             back_pair=back_pair,
             engine="fixture-bridge",
+            our_actions=our_actions,
         )
 
     def full_battle(self, payload: dict[str, Any]) -> dict[str, Any]:

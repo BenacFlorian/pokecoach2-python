@@ -15,7 +15,9 @@ from sqlmodel import Session
 
 from pokecoach_python.core.config import Settings
 from pokecoach_python.db.analysis_repository import AnalysisRepository
+from pokecoach_python.engine.capabilities import engine_supported_phases
 from pokecoach_python.engine.factory import build_engine_adapter
+from pokecoach_python.workflow.registry import phase_order
 from pokecoach_python.schemas.analysis_commands import (
     AnalysisCancelResponse,
     AnalysisCapabilitiesResponse,
@@ -43,9 +45,9 @@ def _repo(session: Session, settings: Settings) -> AnalysisRepository:
 
 
 def analysis_capabilities(settings: Settings) -> AnalysisCapabilitiesResponse:
-    phases = settings.analysis_deployed_phase_list()
+    phases_config = settings.analysis_deployed_phase_list()
     regulations = settings.analysis_regulation_list()
-    if not phases or not regulations:
+    if not phases_config or not regulations:
         raise HTTPException(
             status_code=503,
             detail={
@@ -53,14 +55,25 @@ def analysis_capabilities(settings: Settings) -> AnalysisCapabilitiesResponse:
                 "message": "Configuration d’analyse indisponible.",
             },
         )
+    if settings.engine_mode.lower() == "vgc_bench" and not settings.vgc_checkpoint_path:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "ENGINE_UNAVAILABLE",
+                "message": "Checkpoint VGC non configuré (VGC_CHECKPOINT_PATH).",
+            },
+        )
     engine = build_engine_adapter(settings)
     try:
-        engine.preflight(
-            {"regulation": regulations[0], "checkpoint_id": settings.analysis_checkpoint_id},
-            ({}, {}),
-        )
+        engine.hello()
+        if settings.engine_mode.lower() == "stub":
+            engine.preflight(
+                {"regulation": regulations[0], "checkpoint_id": settings.analysis_checkpoint_id},
+                ({}, {}),
+            )
+        phases = engine_supported_phases(engine, settings)
     except Exception as exc:
-        logger.error("engine preflight failed: %s", type(exc).__name__)
+        logger.error("engine capabilities failed: %s", type(exc).__name__)
         raise HTTPException(
             status_code=503,
             detail={
@@ -70,8 +83,18 @@ def analysis_capabilities(settings: Settings) -> AnalysisCapabilitiesResponse:
         ) from exc
     finally:
         engine.close()
+    if not phases:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "ENGINE_UNAVAILABLE",
+                "message": "Aucune phase disponible avec le moteur configuré.",
+            },
+        )
+    execution_order = [p for p in phase_order() if p != "synthesis"]
     return AnalysisCapabilitiesResponse(
         phases=phases,
+        phase_order=[p for p in execution_order if p in phases],
         profiles=list(_DEPLOYED_PROFILES),
         regulations=regulations,
     )
@@ -209,6 +232,36 @@ def start_analysis(
         ) from exc
     matchup = _load_matchup(session, matchup_id)
     _validate_start_request(settings, matchup, body)
+
+    if settings.engine_mode.lower() == "vgc_bench":
+        try:
+            our_snap, opp_snap, _reg = repo.load_matchup_snapshots(matchup_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "MATCHUP_NOT_FOUND", "message": "Matchup introuvable."},
+            ) from exc
+        regulation = matchup.regulation or settings.analysis_regulation_default()
+        engine = build_engine_adapter(settings)
+        try:
+            engine.preflight(
+                {
+                    "regulation": regulation,
+                    "checkpoint_id": settings.analysis_checkpoint_id,
+                },
+                (our_snap, opp_snap),
+            )
+        except Exception as exc:
+            logger.error("vgc preflight at start failed: %s", type(exc).__name__)
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "ENGINE_PREFLIGHT_FAILED",
+                    "message": "Équipes ou réglementation incompatibles avec le moteur.",
+                },
+            ) from exc
+        finally:
+            engine.close()
 
     if _active_run_exists(session, matchup_id):
         raise HTTPException(

@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 Phase = Literal["A", "B", "C", "D", "synthesis"]
 
-_PHASE_ORDER: tuple[Phase, ...] = ("A", "B", "C", "D", "synthesis")
+_PHASE_ORDER: tuple[Phase, ...] = ("A", "C", "B", "D", "synthesis")
 
 
 class StrictModel(BaseModel):
@@ -20,19 +20,10 @@ class PokemonRef(StrictModel):
     slot: int = Field(ge=0, le=5)
 
 
-class Turn1Section(StrictModel):
-    sampleSize: int = Field(ge=0)
-    jointActions: list[Any]
-    backPairs: list[Any]
-    backSlotMarginals: list[Any]
-    endStateNotes: list[str]
-
-
 class OpponentLeadEntry(StrictModel):
     id: str
     slots: tuple[int, int]
     count: int = Field(ge=0)
-    turn1: Turn1Section | None = None
 
     @model_validator(mode="after")
     def slots_distinct(self) -> OpponentLeadEntry:
@@ -45,6 +36,16 @@ class OpponentLeadEntry(StrictModel):
 class OpponentLeadsSection(StrictModel):
     sampleSize: int = Field(ge=0)
     leads: list[OpponentLeadEntry]
+
+
+class Turn1Section(StrictModel):
+    """Legacy turn-1 aggregate shape (unit tests for joint action grouping)."""
+
+    sampleSize: int = Field(ge=0)
+    jointActions: list[Any]
+    backPairs: list[Any]
+    backSlotMarginals: list[Any]
+    endStateNotes: list[str]
 
 
 class LeadSelection(StrictModel):
@@ -65,9 +66,27 @@ class LeadSelection(StrictModel):
 class LeadPickSection(StrictModel):
     selection: LeadSelection
     comparisons: list[Any]
-    firstTurns: list[Any]
     selectionRuleVersion: str
     limitations: list[str]
+
+
+class OpeningStudyEntry(StrictModel):
+    opponentLeadId: str
+    opponentLeadSlots: tuple[int, int]
+    sampleSize: int = Field(ge=0)
+    opponentActions: list[Any]
+    ourActions: list[Any]
+    recommendation: dict[str, Any]
+    backPairs: list[Any]
+    backSlotMarginals: list[Any]
+    endStateNotes: list[str]
+
+
+class OpeningsSection(StrictModel):
+    selection: LeadSelection
+    recommendationRule: Literal["model-frequency-v1"]
+    samplingPolicy: str
+    byOpponentLead: list[OpeningStudyEntry]
 
 
 class RefinementSection(StrictModel):
@@ -102,6 +121,7 @@ class SimulationResultV2(StrictModel):
     completedPhases: list[Phase]
     opponentLeads: OpponentLeadsSection | None
     leadPick: LeadPickSection | None
+    openings: OpeningsSection | None
     refinement: RefinementSection | None
     gameplan: GameplanSection | None
     winCondition: WinConditionSection | None
@@ -110,16 +130,20 @@ class SimulationResultV2(StrictModel):
     def phases_and_sections(self) -> SimulationResultV2:
         phases = self.completedPhases
         if phases != list(_PHASE_ORDER[: len(phases)]):
-            raise ValueError("completedPhases must be a strict prefix of A,B,C,D,synthesis")
+            raise ValueError("completedPhases must be a strict prefix of A,C,B,D,synthesis")
         n = len(phases)
         if n >= 1 and self.opponentLeads is None:
             raise ValueError("opponentLeads required after phase A")
         if n < 1 and self.opponentLeads is not None:
             raise ValueError("opponentLeads forbidden before phase A")
-        if n >= 3 and self.leadPick is None:
+        if n >= 2 and self.leadPick is None:
             raise ValueError("leadPick required after phase C")
-        if n < 3 and self.leadPick is not None:
+        if n < 2 and self.leadPick is not None:
             raise ValueError("leadPick forbidden before phase C")
+        if n >= 3 and self.openings is None:
+            raise ValueError("openings required after phase B")
+        if n < 3 and self.openings is not None:
+            raise ValueError("openings forbidden before phase B")
         if n >= 4 and self.refinement is None:
             raise ValueError("refinement required after phase D")
         if n < 4 and self.refinement is not None:
@@ -130,7 +154,14 @@ class SimulationResultV2(StrictModel):
         else:
             if self.gameplan is not None or self.winCondition is not None:
                 raise ValueError("LLM fields only allowed after synthesis")
+        if self.openings is not None and self.leadPick is not None:
+            if self.openings.selection != self.leadPick.selection:
+                raise ValueError("openings.selection must match leadPick.selection")
         return self
+
+
+def phase_execution_order() -> tuple[Phase, ...]:
+    return _PHASE_ORDER
 
 
 def validate_result(payload: dict[str, Any], require_complete: bool = False) -> SimulationResultV2:
@@ -150,6 +181,7 @@ def empty_envelope() -> dict[str, Any]:
         completedPhases=[],
         opponentLeads=None,
         leadPick=None,
+        openings=None,
         refinement=None,
         gameplan=None,
         winCondition=None,

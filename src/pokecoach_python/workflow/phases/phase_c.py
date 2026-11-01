@@ -32,13 +32,14 @@ def _attempt_seed(run_seed: int, lead_index: int, sample_index: int, attempt: in
     return int.from_bytes(digest[:8], "big")
 
 
-def _load_phase_ab(partial: dict[str, Any]) -> OpponentLeadsSection:
-    if partial.get("completedPhases") != ["A", "B"]:
-        raise RuntimeError("phase C requires completed phases A and B")
+def _load_phase_a(partial: dict[str, Any]) -> OpponentLeadsSection:
+    if partial.get("completedPhases") != ["A"]:
+        raise RuntimeError("phase C requires completed phase A checkpoint")
     payload = {
         "schemaVersion": 2,
         "source": "simulation",
         "leadPick": None,
+        "openings": None,
         "refinement": None,
         "gameplan": None,
         "winCondition": None,
@@ -47,9 +48,9 @@ def _load_phase_ab(partial: dict[str, Any]) -> OpponentLeadsSection:
     try:
         validated = validate_result(payload)
     except ValueError as exc:
-        raise RuntimeError("phase C requires valid A+B checkpoint") from exc
-    if validated.completedPhases != ["A", "B"] or validated.opponentLeads is None:
-        raise RuntimeError("phase C requires opponentLeads from A+B")
+        raise RuntimeError("phase C requires valid A checkpoint") from exc
+    if validated.completedPhases != ["A"] or validated.opponentLeads is None:
+        raise RuntimeError("phase C requires opponentLeads from A")
     return validated.opponentLeads
 
 
@@ -64,9 +65,9 @@ def _persist_battle(
 
 
 def run_phase_c(context: PhaseContext) -> PhaseOutput:
-    section_ab = _load_phase_ab(context.partial_result)
+    section_a = _load_phase_a(context.partial_result)
     top_n = studied_opponent_lead_count(context.parameters)
-    studied = section_ab.leads[: min(top_n, len(section_ab.leads))]
+    studied = section_a.leads[: min(top_n, len(section_a.leads))]
     budget = phase_c_valid_budget(context.profile)
     per_lead_cap = max_attempts(budget)
     total_target = len(studied) * budget
@@ -98,7 +99,7 @@ def run_phase_c(context: PhaseContext) -> PhaseOutput:
                 regulation=context.regulation,
                 checkpoint_id=str(context.parameters.get("checkpoint_id", "stub-bc-v1")),
                 seed=_attempt_seed(context.seed, lead_index, sample_index, attempts),
-                timeout_seconds=context.preview_timeout_seconds,
+                timeout_seconds=context.full_battle_timeout_seconds,
                 opponent_lead=lead_slots,
             )
             try:
@@ -115,8 +116,17 @@ def run_phase_c(context: PhaseContext) -> PhaseOutput:
                 context.report_progress("C", done_global, total_target)
             except ValueError:
                 rejects_total += 1
-            except Exception:
+            except Exception as exc:
                 errors_total += 1
+                if errors_total <= 3:
+                    import logging
+
+                    logging.getLogger(__name__).warning(
+                        "phase C full_battle attempt %s failed: %s: %s",
+                        attempts,
+                        type(exc).__name__,
+                        exc,
+                    )
 
         if valid_count < budget:
             raise RuntimeError(
@@ -133,16 +143,17 @@ def run_phase_c(context: PhaseContext) -> PhaseOutput:
 
     lead_pick = aggregate_selections(
         battles,
-        section_ab,
+        section_a,
         rule_version=_RULE_VERSION,
         top_n=top_n,
     )
     envelope = SimulationResultV2(
         schemaVersion=2,
         source="simulation",
-        completedPhases=["A", "B", "C"],
-        opponentLeads=section_ab,
+        completedPhases=["A", "C"],
+        opponentLeads=section_a,
         leadPick=lead_pick,
+        openings=None,
         refinement=None,
         gameplan=None,
         winCondition=None,

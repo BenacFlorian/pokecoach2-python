@@ -1,30 +1,44 @@
-# Audit VGC-Bench (plan 04 tâche 1 / plan 04b)
+# Audit VGC-Bench (plan 04b)
 
-Commit épinglé : `d79f9532947ac114dce1dda2456a590afcd375b2` ([vgc-bench](https://github.com/cameronangliss/vgc-bench/commit/d79f9532947ac114dce1dda2456a590afcd375b2)).
+Commit épinglé amont : `d79f9532947ac114dce1dda2456a590afcd375b2` ([vgc-bench](https://github.com/cameronangliss/vgc-bench/commit/d79f9532947ac114dce1dda2456a590afcd375b2)).
 
-Manifeste PokeCoach : `engine-runtime/manifest.json`.
+Manifeste PokeCoach : `engine-runtime/manifest.json` (SHA checkpoint référence `57f5edcab415cf6ccc1b6231923c8b66d3b1b7249b6b2562b97531471e4ca60b`).
 
-## Interfaces PokeCoach (contrats maison)
+## État implémentation (code)
 
-| Mode | Méthode adaptateur | Statut |
-| --- | --- | --- |
-| Preview (phase A) | `EngineAdapter.preview` | Stub local ; `vgc_bench` → subprocess JSONL (`pokecoach_vgc_bridge`) |
-| Tour 1 (phase B) | `first_turn` | Idem ; moves depuis sets via bridge (fixture CI ou BC réel) |
-| Combat complet (C/D) | `full_battle` | Idem ; exige `terminalEvidence` en meta |
+| Composant | Statut |
+| --- | --- |
+| `VgcBenchEngineAdapter` | Subprocess JSONL uniquement ; **pas** de repli stub |
+| Bridge `pokecoach_vgc_bridge` | `server.py`, `runtime.py`, `fixture_sim` (CI), `vgc_real` + `battle_runner` (Showdown + BC si deps installées) |
+| Protocole | `hello`, `preflight`, `preview`, `first_turn`, `full_battle`, `shutdown` |
+| Normalisation | `normalization.py`, `extract_turn_one.py`, `contracts/battle-trace-v1.schema.json` |
+| Worker / provenance | `provenance.py`, graine stable `seeds.py`, compat moteur au claim |
+| Capacités API | `capabilities.py` + preflight sur vrais snapshots matchup |
+| Validation C/D | `validate_real_engine_battle` à l’insert si `vgc_bench` |
 
-`VgcBenchEngineAdapter` **ne délègue plus** au stub. Checkpoint ou bridge fixture requis.
+## Preuve locale (sans Torch)
 
-## Vérification locale
+Bridge fixture (`POKECOACH_BRIDGE_FIXTURE=1`) :
 
 ```bash
-cd pokecoach2-python && devbox run engine-setup
-devbox run engine-check -- --our-team … --opponent-team … --modes preview,first_turn,full_battle
+cd pokecoach2-python
+devbox run engine-setup
+POKECOACH_BRIDGE_FIXTURE=1 devbox run test
+POKECOACH_BRIDGE_FIXTURE=1 devbox run test-integration
+POKECOACH_BRIDGE_FIXTURE=1 devbox run engine-check -- \
+  --our-team tests/fixtures/engine-real/sample-team.json \
+  --opponent-team tests/fixtures/engine-real/sample-team.json \
+  --modes preview,first_turn,full_battle --seed 1
 ```
 
-Recette détaillée : [moteur-reel.md](../recettes/moteur-reel.md).
+Créer `tests/fixtures/engine-real/sample-team.json` à partir d’un export Showdown expurgé si absent (voir README du dossier).
 
-## Prochaines étapes moteur
+## Preuve moteur réel (BC + Showdown)
 
-1. Installer VGC-Bench épinglé dans `engine-runtime` (Torch, poke-env fork, sous-module Showdown).
-2. Implémenter `vgc_real.RealRuntime` (policy_player + rejet preview conditionnel phase B).
-3. Rejouer recettes smoke/standard A→D avec checkpoint BC compatible teampreview appris.
+1. `devbox run engine-fetch-checkpoint` puis `VGC_CHECKPOINT_PATH` + `VGC_CHECKPOINT_SHA256` dans `.env`.
+2. Installer VGC-Bench / Torch / poke-env dans `engine-runtime` (voir [moteur-reel.md](../recettes/moteur-reel.md) — `open-spiel` peut bloquer l’install complète).
+3. Serveur Showdown local (port documenté dans `.env.example`).
+4. `POKECOACH_VGC_REAL=1 uv run pytest tests/integration/test_vgc_*_real.py -q`
+5. `devbox run engine-check` avec les mêmes snapshots et `--test-d-constraints`.
+
+Critères de fin plan 04b §154–161 : la preuve **BC réelle** repose sur les étapes 1–5 ci-dessus ; le code refuse stub/mixte et exige `terminalEvidence` pour persistance réelle.

@@ -43,8 +43,17 @@ def run_phase_a(context: PhaseContext) -> PhaseOutput:
             context.report_progress("A", len(valid), budget)
         except ValueError:
             rejects += 1
-        except Exception:
+        except Exception as exc:
             errors += 1
+            if errors <= 3:
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "phase A preview attempt %s failed: %s: %s",
+                    attempts,
+                    type(exc).__name__,
+                    exc,
+                )
 
     if len(valid) < budget:
         raise RuntimeError(
@@ -62,6 +71,7 @@ def run_phase_a(context: PhaseContext) -> PhaseOutput:
         completedPhases=["A"],
         opponentLeads=section,
         leadPick=None,
+        openings=None,
         refinement=None,
         gameplan=None,
         winCondition=None,

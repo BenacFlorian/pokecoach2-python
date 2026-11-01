@@ -1,4 +1,4 @@
-"""Phase B — turn 1 and back distributions per opponent lead from phase A."""
+"""Phase B — conditioned turn-1 openings for each opponent lead from phase A."""
 
 from __future__ import annotations
 
@@ -7,31 +7,33 @@ import json
 from typing import Any
 
 from pokecoach_python.engine.contracts import SimulationRequest, TurnOneRecord
+from pokecoach_python.engine.seeds import phase_attempt_seed
 from pokecoach_python.schemas.analysis_result import (
-    OpponentLeadEntry,
+    LeadPickSection,
     OpponentLeadsSection,
     SimulationResultV2,
-    Turn1Section,
     validate_result,
 )
 from pokecoach_python.workflow.aggregation.leads import canonical_lead
-from pokecoach_python.workflow.aggregation.turn_one import aggregate_turn_one
+from pokecoach_python.workflow.aggregation.openings import aggregate_openings
+from pokecoach_python.workflow.battle_records import canonical_four
 from pokecoach_python.workflow.budgets import max_attempts, phase_b_valid_budget
 from pokecoach_python.workflow.types import PhaseContext, PhaseOutput
 
+_SAMPLING_POLICY = "conditional-back-v1"
+
 
 def _attempt_seed(run_seed: int, lead_index: int, attempt: int) -> int:
-    digest = hashlib.sha256(f"{run_seed}:B:{lead_index}:{attempt}".encode()).digest()
-    return int.from_bytes(digest[:8], "big")
+    return phase_attempt_seed(run_seed, "B", lead_index, attempt)
 
 
-def _load_phase_a_section(partial: dict[str, Any]) -> OpponentLeadsSection:
-    if partial.get("completedPhases") != ["A"]:
-        raise RuntimeError("phase B requires completed phase A checkpoint")
+def _load_phase_ac(partial: dict[str, Any]) -> tuple[OpponentLeadsSection, LeadPickSection]:
+    if partial.get("completedPhases") != ["A", "C"]:
+        raise RuntimeError("phase B requires completed phases A and C")
     payload = {
         "schemaVersion": 2,
         "source": "simulation",
-        "leadPick": None,
+        "openings": None,
         "refinement": None,
         "gameplan": None,
         "winCondition": None,
@@ -40,34 +42,21 @@ def _load_phase_a_section(partial: dict[str, Any]) -> OpponentLeadsSection:
     try:
         validated = validate_result(payload)
     except ValueError as exc:
-        raise RuntimeError("phase B requires completed phase A checkpoint") from exc
-    if validated.completedPhases != ["A"] or validated.opponentLeads is None:
-        raise RuntimeError("phase B requires completed phase A checkpoint")
-    return validated.opponentLeads
-
-
-def _merge_turn1(
-    section_a: OpponentLeadsSection,
-    turn1_by_id: dict[str, Turn1Section],
-) -> OpponentLeadsSection:
-    leads: list[OpponentLeadEntry] = []
-    for entry in section_a.leads:
-        turn1 = turn1_by_id.get(entry.id)
-        if turn1 is None:
-            raise RuntimeError(f"missing turn1 for lead {entry.id}")
-        leads.append(
-            OpponentLeadEntry(
-                id=entry.id,
-                slots=entry.slots,
-                count=entry.count,
-                turn1=turn1,
-            )
-        )
-    return OpponentLeadsSection(sampleSize=section_a.sampleSize, leads=leads)
+        raise RuntimeError("phase B requires valid A+C checkpoint") from exc
+    if (
+        validated.completedPhases != ["A", "C"]
+        or validated.opponentLeads is None
+        or validated.leadPick is None
+    ):
+        raise RuntimeError("phase B requires opponentLeads and leadPick from A+C")
+    return validated.opponentLeads, validated.leadPick
 
 
 def run_phase_b(context: PhaseContext) -> PhaseOutput:
-    section_a = _load_phase_a_section(context.partial_result)
+    section_a, lead_pick = _load_phase_ac(context.partial_result)
+    selection = lead_pick.selection
+    our_four = canonical_four(selection.ourFourSlots)
+    our_lead = canonical_lead(selection.ourLeadSlots)
     budget = phase_b_valid_budget(context.profile)
     per_lead_cap = max_attempts(budget)
     total_target = len(section_a.leads) * budget
@@ -75,7 +64,7 @@ def run_phase_b(context: PhaseContext) -> PhaseOutput:
     attempts_total = 0
     rejects_total = 0
     errors_total = 0
-    turn1_by_id: dict[str, Turn1Section] = {}
+    records_by_id: dict[str, list[TurnOneRecord]] = {}
 
     context.report_progress("B", 0, total_target)
 
@@ -95,8 +84,10 @@ def run_phase_b(context: PhaseContext) -> PhaseOutput:
                 regulation=context.regulation,
                 checkpoint_id=str(context.parameters.get("checkpoint_id", "stub-bc-v1")),
                 seed=_attempt_seed(context.seed, lead_index, attempts),
-                timeout_seconds=context.preview_timeout_seconds,
+                timeout_seconds=context.first_turn_timeout_seconds,
                 opponent_lead=lead_slots,
+                our_selection=our_four,
+                our_lead_slots=our_lead,
             )
             try:
                 record = context.engine.first_turn(req)
@@ -120,22 +111,28 @@ def run_phase_b(context: PhaseContext) -> PhaseOutput:
                 f"(attempts={attempts}, rejects={rejects}, errors={errors})"
             )
 
-        turn1_by_id[entry.id] = aggregate_turn_one(valid, lead_slots)
+        records_by_id[entry.id] = valid
 
-    merged = _merge_turn1(section_a, turn1_by_id)
+    openings = aggregate_openings(
+        records_by_id,
+        section_a.leads,
+        selection,
+        sampling_policy=_SAMPLING_POLICY,
+    )
     envelope = SimulationResultV2(
         schemaVersion=2,
         source="simulation",
-        completedPhases=["A", "B"],
-        opponentLeads=merged,
-        leadPick=None,
+        completedPhases=["A", "C", "B"],
+        opponentLeads=section_a,
+        leadPick=lead_pick,
+        openings=openings,
         refinement=None,
         gameplan=None,
         winCondition=None,
     )
     audit_fingerprint = hashlib.sha256(
         json.dumps(
-            {lead_id: turn1.sampleSize for lead_id, turn1 in turn1_by_id.items()},
+            {lead_id: len(recs) for lead_id, recs in records_by_id.items()},
             sort_keys=True,
         ).encode()
     ).hexdigest()[:16]
@@ -149,6 +146,7 @@ def run_phase_b(context: PhaseContext) -> PhaseOutput:
             "errors": errors_total,
             "leadsProcessed": len(section_a.leads),
             "budgetPerLead": budget,
+            "samplingPolicy": _SAMPLING_POLICY,
             "auditFingerprint": audit_fingerprint,
         },
     )

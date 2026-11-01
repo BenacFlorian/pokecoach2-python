@@ -32,11 +32,16 @@ def build_turn_one(
     actions: list[dict[str, Any]],
     back_pair: tuple[int, int],
     engine: str,
+    our_actions: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    opp_actions = actions
+    ours = our_actions if our_actions is not None else []
     return {
         "opponentLeadSlots": list(opponent_lead),
         "payload": {
-            "actions": actions,
+            "opponentActions": opp_actions,
+            "actions": opp_actions,
+            "ourActions": ours,
             "backPair": list(back_pair),
             "ourLeadSlots": list(our_lead),
             "endStateNotes": [],

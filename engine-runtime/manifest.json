@@ -8,6 +8,8 @@
     "id": "bc-policy-v1",
     "pathEnv": "VGC_CHECKPOINT_PATH",
     "sha256Env": "VGC_CHECKPOINT_SHA256",
+    "referenceSha256": "57f5edcab415cf6ccc1b6231923c8b66d3b1b7249b6b2562b97531471e4ca60b",
+    "referenceFile": "results/saves_bc/seed1/100.zip",
     "notes": "Télécharger les poids BC amont ; ne pas entraîner dans PokeCoach."
   },
   "normalizerVersion": 1,

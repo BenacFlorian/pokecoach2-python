@@ -16,7 +16,6 @@ from pokecoach_python.schemas.analysis_result import (
     OpponentLeadsSection,
 )
 from pokecoach_python.workflow.aggregation.leads import canonical_lead, lead_id
-from pokecoach_python.workflow.aggregation.turn_one import canonical_joint_key
 from pokecoach_python.workflow.battle_records import canonical_four, four_slots_leads_first
 
 
@@ -170,96 +169,6 @@ def _rank_candidates(
     return sorted(pool, key=sort_key)
 
 
-def _extract_our_turn1_actions(record: BattleRecord) -> list[dict[str, Any]]:
-    if not record.turns:
-        return []
-    turn = record.turns[0]
-    actions = turn.get("ourActions")
-    if not isinstance(actions, list):
-        return []
-    return [a for a in actions if isinstance(a, dict)]
-
-
-def _build_first_turns(
-    selection: _CandidateKey,
-    studied: Sequence[OpponentLeadEntry],
-    battles: Sequence[BattleRecord],
-    leads_by_slots: dict[tuple[int, int], str],
-) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for entry in studied:
-        relevant = [
-            b
-            for b in battles
-            if _candidate_key(b) == selection
-            and _lead_id_for_battle(b, leads_by_slots) == entry.id
-        ]
-        if not relevant:
-            rows.append(
-                {
-                    "opponentLeadId": entry.id,
-                    "primaryActions": [],
-                    "alternatives": ["Données insuffisantes"],
-                    "adaptations": [],
-                }
-            )
-            continue
-        groups: dict[str, list[BattleRecord]] = defaultdict(list)
-        for battle in relevant:
-            actions = _extract_our_turn1_actions(battle)
-            if len(actions) != 2:
-                continue
-            key = canonical_joint_key(actions)
-            groups[key].append(battle)
-        if not groups:
-            rows.append(
-                {
-                    "opponentLeadId": entry.id,
-                    "primaryActions": [],
-                    "alternatives": ["Données insuffisantes"],
-                    "adaptations": [],
-                }
-            )
-            continue
-
-        ranked: list[tuple[str, _OutcomeBucket, list[dict[str, Any]]]] = []
-        for key, group in groups.items():
-            bucket = _OutcomeBucket()
-            for battle in group:
-                _apply_outcome(bucket, battle.outcome)
-            actions = _extract_our_turn1_actions(group[0])
-            ranked.append((key, bucket, actions))
-
-        ranked.sort(
-            key=lambda item: (
-                -(item[1].win_rate() or Fraction(0)),
-                -item[1].sample_size,
-                item[0],
-            )
-        )
-        top_key, top_bucket, top_actions = ranked[0]
-        alts: list[str] = []
-        for key, bucket, actions in ranked[1:4]:
-            rate = bucket.win_rate()
-            pct = (
-                f"{float(rate * 100):.1f}% victoires"
-                if rate is not None
-                else "taux indisponible"
-            )
-            move_a = actions[0].get("move") or actions[0].get("kind")
-            move_b = actions[1].get("move") or actions[1].get("kind")
-            alts.append(f"{move_a} / {move_b} (n={bucket.sample_size}, {pct})")
-        rows.append(
-            {
-                "opponentLeadId": entry.id,
-                "primaryActions": top_actions,
-                "alternatives": alts,
-                "adaptations": [],
-            }
-        )
-    return rows
-
-
 def _build_comparisons(
     candidates: Sequence[_CandidateKey],
     studied: Sequence[OpponentLeadEntry],
@@ -348,7 +257,6 @@ def aggregate_selections(
     ranked = _rank_candidates(list(candidates_set), studied_ids, weights, stats)
     winner = ranked[0]
     comparisons = _build_comparisons(ranked, studied, stats)
-    first_turns = _build_first_turns(winner, studied, battles, leads_by_slots)
     limitations = _build_limitations(winner, studied, weights, stats, rule_version)
 
     winner_four = four_slots_leads_first(winner.our_four, winner.our_lead)
@@ -358,7 +266,6 @@ def aggregate_selections(
             ourLeadSlots=winner.our_lead,
         ),
         comparisons=comparisons,
-        firstTurns=first_turns,
         selectionRuleVersion=rule_version,
         limitations=limitations,
     )

@@ -24,9 +24,9 @@ def _attempt_seed(run_seed: int, sample_index: int, attempt: int) -> int:
     return int.from_bytes(digest[:8], "big")
 
 
-def _load_phase_abc(partial: dict[str, Any]) -> SimulationResultV2:
-    if partial.get("completedPhases") != ["A", "B", "C"]:
-        raise RuntimeError("phase D requires completed phases A, B and C")
+def _load_phase_acb(partial: dict[str, Any]) -> SimulationResultV2:
+    if partial.get("completedPhases") != ["A", "C", "B"]:
+        raise RuntimeError("phase D requires completed phases A, C and B")
     payload = {
         "schemaVersion": 2,
         "source": "simulation",
@@ -38,16 +38,20 @@ def _load_phase_abc(partial: dict[str, Any]) -> SimulationResultV2:
     try:
         validated = validate_result(payload)
     except ValueError as exc:
-        raise RuntimeError("phase D requires valid A+B+C checkpoint") from exc
-    if validated.completedPhases != ["A", "B", "C"]:
-        raise RuntimeError("phase D requires completed phases A, B and C")
-    if validated.leadPick is None or validated.opponentLeads is None:
-        raise RuntimeError("phase D requires leadPick and opponentLeads")
+        raise RuntimeError("phase D requires valid A+C+B checkpoint") from exc
+    if validated.completedPhases != ["A", "C", "B"]:
+        raise RuntimeError("phase D requires completed phases A, C and B")
+    if (
+        validated.leadPick is None
+        or validated.opponentLeads is None
+        or validated.openings is None
+    ):
+        raise RuntimeError("phase D requires leadPick, opponentLeads and openings")
     return validated
 
 
 def run_phase_d(context: PhaseContext) -> PhaseOutput:
-    checkpoint = _load_phase_abc(context.partial_result)
+    checkpoint = _load_phase_acb(context.partial_result)
     config = select_refinement_configuration(
         checkpoint,
         studied_lead_count=studied_lead_count_from_parameters(context.parameters),
@@ -78,7 +82,7 @@ def run_phase_d(context: PhaseContext) -> PhaseOutput:
             regulation=context.regulation,
             checkpoint_id=str(context.parameters.get("checkpoint_id", "stub-bc-v1")),
             seed=_attempt_seed(context.seed, sample_index, attempts_total),
-            timeout_seconds=context.preview_timeout_seconds,
+            timeout_seconds=context.full_battle_timeout_seconds,
             opponent_lead=config.opponent_lead,
             our_selection=config.our_four,
             our_lead_slots=config.our_lead,
@@ -117,9 +121,10 @@ def run_phase_d(context: PhaseContext) -> PhaseOutput:
     envelope = SimulationResultV2(
         schemaVersion=2,
         source="simulation",
-        completedPhases=["A", "B", "C", "D"],
+        completedPhases=["A", "C", "B", "D"],
         opponentLeads=checkpoint.opponentLeads,
         leadPick=checkpoint.leadPick,
+        openings=checkpoint.openings,
         refinement=refinement,
         gameplan=None,
         winCondition=None,

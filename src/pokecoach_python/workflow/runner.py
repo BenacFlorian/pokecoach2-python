@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 
 from pokecoach_python.db.analysis_repository import AnalysisRepository, ClaimedRun, _initial_provenance
 from pokecoach_python.engine.contracts import BattleRecord
 from pokecoach_python.engine.factory import build_engine_adapter
+from pokecoach_python.engine.seeds import run_base_seed
 from pokecoach_python.engine.provenance import assert_run_engine_compatible
 from pokecoach_python.schemas.analysis_result import Phase
 from pokecoach_python.workflow.registry import handler_for, phase_order
@@ -26,15 +26,7 @@ def _phases_to_run(completed: list[str], target: Phase) -> list[Phase]:
 
 
 def _parse_seed(parameters: dict) -> int:
-    raw = parameters.get("seed", "0")
-    text = str(raw)
-    try:
-        if len(text) > 8:
-            return int(text, 16) % (2**31)
-        return int(text) % (2**31)
-    except ValueError:
-        digest = hashlib.sha256(text.encode()).digest()
-        return int.from_bytes(digest[:4], "big") % (2**31)
+    return run_base_seed(parameters)
 
 
 def _should_pause_after_phase(
@@ -61,7 +53,7 @@ def _defer_publish_after_phase(
     next_phase = remaining_phases[0]
     if handler_for(next_phase) is None:
         return False
-    chain = (("A", "B"), ("B", "C"), ("C", "D"))
+    chain = (("A", "C"), ("C", "B"), ("B", "D"))
     return (output_phase, next_phase) in chain
 
 
@@ -140,6 +132,13 @@ class WorkflowRunner:
                     preview_timeout_seconds=float(
                         self._settings.analysis_preview_timeout_seconds
                     ),
+                    first_turn_timeout_seconds=float(
+                        self._settings.engine_first_turn_timeout_seconds
+                    ),
+                    full_battle_timeout_seconds=float(
+                        self._settings.engine_full_battle_timeout_seconds
+                    ),
+                    engine_mode=self._settings.engine_mode,
                     insert_battle=_insert_battle if battle_phase in ("C", "D") else None,
                     list_battles=_list_battles if battle_phase in ("C", "D") else None,
                 )
