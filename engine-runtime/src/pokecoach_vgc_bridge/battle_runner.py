@@ -238,6 +238,9 @@ async def _run_first_turn_battle(
     if our_imposed_four is not None:
         if our_four != our_imposed_four:
             raise ValueError("observed our bring-4 mismatch with imposed selection")
+    from pokecoach_vgc_bridge.battle_capture import attach_player_captures_to_battle
+
+    attach_player_captures_to_battle(battle, p1, p2)
     battle_format = _battle_format_for_regulation(regulation)
     payload = extract_turn_one_payload(
         battle,
@@ -377,6 +380,9 @@ async def _run_full_battle(
             raise ValueError("simulated lead rejection")
 
     opp_back = _back_pair_from_preview_four(opp_four_obs)
+    from pokecoach_vgc_bridge.battle_capture import attach_player_captures_to_battle
+
+    attach_player_captures_to_battle(battle, p1, p2)
     battle_format = _battle_format_for_regulation(regulation)
     turn1 = extract_turn_one_payload(
         battle,
@@ -432,7 +438,11 @@ async def _run_full_battle(
         opponent_actions_turn1=turn1["actions"],
         trace=trace,
     )
-    damage_events = [event for event in trace.events if event.get("kind") == "damage"]
+    damage_events = [
+        event
+        for event in trace.events
+        if event.get("kind") == "damage" and isinstance(event.get("target"), dict)
+    ]
     if turn_count > 1:
         for turn_index in range(2, turn_count + 1):
             if not any(int(event.get("turn") or 0) == turn_index for event in trace.events):

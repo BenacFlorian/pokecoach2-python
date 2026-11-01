@@ -45,14 +45,15 @@ def _strategy(opening: str) -> StrategyOutput:
     )
 
 
-def test_render_strategy_references_replaces_tokens():
+def test_render_strategy_references_replaces_single_brace_tokens():
     our, opp = make_snapshots()
     rendered = render_strategy_references(
-        _strategy("Lead with {{ours:0}}."),
+        _strategy("Lead with {ours:0} and {{ours:1}}."),
         snapshots=(our, opp),
     )
-    assert "{{" not in rendered.gameplan.opening
+    assert "{ours:" not in rendered.gameplan.opening
     assert "Flutter Mane" in rendered.gameplan.opening
+    assert "Incineroar" in rendered.gameplan.opening
 
 
 def test_validate_strategy_reference_tokens_rejects_outside_bring_four():
@@ -63,14 +64,36 @@ def test_validate_strategy_reference_tokens_rejects_outside_bring_four():
         )
 
 
-def test_validate_strategy_team_references_after_render():
+def test_validate_strategy_team_references_before_render():
     our, opp = make_snapshots()
-    rendered = render_strategy_references(
-        _strategy("Press with {{ours:0}}."),
-        snapshots=(our, opp),
-    )
     validate_strategy_team_references(
-        rendered,
+        _strategy("Press with {{ours:0}}."),
         our_snapshot=our,
         our_four=(0, 1, 4, 5),
+        opponent_snapshot=opp,
     )
+
+
+def test_validate_strategy_team_references_allows_shared_species_on_opponent():
+    our, opp = make_snapshots()
+    validate_strategy_team_references(
+        _strategy("Answer {{opponent:3}} with {{ours:0}}."),
+        our_snapshot=our,
+        our_four=(0, 1, 4, 5),
+        opponent_snapshot=opp,
+    )
+
+
+def test_validate_strategy_team_references_rejects_literal_bench_species():
+    our, opp = make_snapshots()
+    our_with_bench = dict(our)
+    mons = list(our_with_bench["pokemon"])
+    mons[2] = {"species": "Sinistcha", "moves": ["Matcha Gotcha"]}
+    our_with_bench["pokemon"] = mons
+    with pytest.raises(ValueError, match="Sinistcha"):
+        validate_strategy_team_references(
+            _strategy("Lead with our Sinistcha."),
+            our_snapshot=our_with_bench,
+            our_four=(0, 1, 4, 5),
+            opponent_snapshot=opp,
+        )

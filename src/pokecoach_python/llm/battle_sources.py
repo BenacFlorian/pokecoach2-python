@@ -155,7 +155,12 @@ def _normalize_damage_event(raw: Any, *, turn_hint: int | None) -> BattleDamageE
     source_raw = raw.get("source")
     target_raw = raw.get("target")
     if not isinstance(target_raw, dict):
-        raise ValueError("damage event target missing")
+        side = raw.get("targetSide")
+        slot = raw.get("targetSlot")
+        if isinstance(side, str) and isinstance(slot, int):
+            target_raw = {"side": side, "slot": slot}
+        else:
+            raise ValueError("damage event target missing")
     source = _pokemon_ref(source_raw) if isinstance(source_raw, dict) else None
     target = _pokemon_ref(target_raw)
     hp_percent_loss = raw.get("hpPercentLoss")

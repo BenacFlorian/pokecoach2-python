@@ -3,11 +3,24 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Callable
 
 from pokecoach_python.graphs.matchup_gameplan.models import StrategyOutput
 
-_REF_TOKEN = re.compile(r"\{\{(ours|opponent):([0-5])\}\}")
+_REF_TOKEN_DOUBLE = re.compile(r"\{\{(ours|opponent):([0-5])\}\}")
+_REF_TOKEN_SINGLE = re.compile(r"(?<!\{)\{(ours|opponent):([0-5])\}(?!\})")
+_REF_TOKEN_PATTERNS = (_REF_TOKEN_DOUBLE, _REF_TOKEN_SINGLE)
+
+
+def _replace_ref_tokens(text: str, repl: Callable[[re.Match[str]], str]) -> str:
+    for pattern in _REF_TOKEN_PATTERNS:
+        text = pattern.sub(repl, text)
+    return text
+
+
+def _iter_ref_token_matches(text: str):
+    for pattern in _REF_TOKEN_PATTERNS:
+        yield from pattern.finditer(text)
 
 
 def _species_at(snapshots: tuple[dict[str, Any], dict[str, Any]], side: str, slot: int) -> str:
@@ -42,13 +55,13 @@ def validate_strategy_reference_tokens(
     our_four: tuple[int, int, int, int],
 ) -> None:
     for field, text in _iter_prose_fields(strategy):
-        for match in _REF_TOKEN.finditer(text):
+        for match in _iter_ref_token_matches(text):
             side, slot_s = match.group(1), int(match.group(2))
             if side == "ours" and slot_s not in our_four:
                 raise ValueError(
                     f"{field} references our slot {slot_s} outside bring-4 via token"
                 )
-        if _REF_TOKEN.search(text) is None and "{{" in text:
+        if "{{" in text and _REF_TOKEN_DOUBLE.search(text) is None:
             raise ValueError(f"{field} contains malformed reference token")
 
 
@@ -62,7 +75,7 @@ def render_strategy_references(
             side, slot_s = match.group(1), int(match.group(2))
             return _species_at(snapshots, side, slot_s)
 
-        return _REF_TOKEN.sub(repl, text)
+        return _replace_ref_tokens(text, repl)
 
     gameplan = strategy.gameplan.model_copy(
         update={
@@ -94,7 +107,7 @@ def forbidden_our_species_in_text(
     allowed_species: set[str],
     full_roster_species: set[str],
 ) -> str | None:
-    stripped = _REF_TOKEN.sub(" ", text)
+    stripped = _replace_ref_tokens(text, lambda _m: " ")
     for species in full_roster_species:
         if species in allowed_species:
             continue
@@ -103,29 +116,48 @@ def forbidden_our_species_in_text(
     return None
 
 
+def _species_set(snapshot: dict[str, Any] | None) -> set[str]:
+    if not isinstance(snapshot, dict):
+        return set()
+    names: set[str] = set()
+    for row in snapshot.get("pokemon") or []:
+        if not isinstance(row, dict):
+            continue
+        species = str(row.get("species") or row.get("name") or "").strip()
+        if species:
+            names.add(species)
+    return names
+
+
 def validate_strategy_team_references(
     strategy: StrategyOutput,
     *,
     our_snapshot: dict[str, Any],
     our_four: tuple[int, int, int, int],
+    opponent_snapshot: dict[str, Any] | None = None,
 ) -> None:
     mons = our_snapshot.get("pokemon") or []
     allowed: set[str] = set()
-    full: set[str] = set()
+    bench_only: set[str] = set()
+    opponent_species = _species_set(opponent_snapshot)
     for slot, row in enumerate(mons):
         if not isinstance(row, dict):
             continue
         species = str(row.get("species") or row.get("name") or "").strip()
         if not species:
             continue
-        full.add(species)
         if slot in our_four:
             allowed.add(species)
+        else:
+            bench_only.add(species)
+    forbidden_bench = {
+        species for species in bench_only if species not in opponent_species
+    }
     for _field, text in _iter_prose_fields(strategy):
         offender = forbidden_our_species_in_text(
             text,
             allowed_species=allowed,
-            full_roster_species=full,
+            full_roster_species=forbidden_bench,
         )
         if offender is not None:
             raise ValueError(

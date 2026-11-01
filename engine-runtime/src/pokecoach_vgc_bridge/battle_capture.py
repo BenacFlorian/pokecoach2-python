@@ -22,7 +22,24 @@ class BattleCapture:
             self.teampreview_slots = slots
 
     def record_order(self, *, turn: int, order: Any) -> None:
-        self.orders.append({"turn": int(turn), "order": repr(order)})
+        from pokecoach_vgc_bridge.battle_order_serialize import serialize_battle_order
+
+        message = getattr(order, "message", None)
+        self.orders.append(
+            {
+                "turn": int(turn),
+                "order": repr(order),
+                "message": str(message) if message is not None else repr(order),
+                "parsed": serialize_battle_order(order),
+            }
+        )
+
+
+def attach_player_captures_to_battle(battle: Any, p1: Any, p2: Any) -> None:
+    battle.pokecoach_player_captures = {
+        "ours": getattr(p1, "pokecoach_capture", None),
+        "opponent": getattr(p2, "pokecoach_capture", None),
+    }
 
 
 def merge_player_captures(p1: BattleCapture, p2: BattleCapture) -> FullBattleTrace:
@@ -50,6 +67,7 @@ def capture_events_from_replay(
 ) -> list[dict[str, Any]]:
     replay = getattr(battle, "_replay_data", None) or []
     events: list[dict[str, Any]] = []
+    hp_by_ident: dict[str, float] = {}
     turn = 0
     for split in replay:
         if len(split) < 2:
@@ -65,9 +83,20 @@ def capture_events_from_replay(
         if kind == "move":
             events.append(_parse_move_event(split, turn=effective_turn, identity=identity, our_is_p1=our_is_p1))
         elif kind == "switch":
+            ident = split[2] if len(split) > 2 else ""
+            if ident:
+                hp_by_ident[ident] = 100.0
             events.append(_parse_switch_event(split, turn=effective_turn, identity=identity, our_is_p1=our_is_p1))
         elif kind == "-damage":
-            events.append(_parse_damage_event(split, turn=effective_turn, identity=identity, our_is_p1=our_is_p1))
+            parsed = _parse_damage_event(
+                split,
+                turn=effective_turn,
+                identity=identity,
+                our_is_p1=our_is_p1,
+                hp_by_ident=hp_by_ident,
+            )
+            if parsed is not None:
+                events.append(parsed)
         elif kind in {"-heal", "-sethp"}:
             events.append(
                 {
@@ -168,17 +197,85 @@ def _parse_damage_event(
     turn: int,
     identity: PokemonIdentityMap,
     our_is_p1: bool,
-) -> dict[str, Any]:
+    hp_by_ident: dict[str, float],
+) -> dict[str, Any] | None:
     ident = split[2] if len(split) > 2 else ""
-    prefix, _role = _protocol_actor(ident)
+    if not ident:
+        return None
+    prefix, role = _protocol_actor(ident)
     side = identity.resolve_side_from_protocol(prefix, our_is_p1=our_is_p1)
+    slot = _roster_slot_from_ident(ident, side, identity)
+    if slot is None:
+        return None
+    hp_token = split[3] if len(split) > 3 else ""
+    parsed_hp = _parse_showdown_hp_token(hp_token)
+    if parsed_hp is None:
+        return None
+    new_pct, fainted = parsed_hp
+    prev_pct = hp_by_ident.get(ident, 100.0)
+    hp_by_ident[ident] = new_pct
+    hp_percent_loss = max(0.0, prev_pct - new_pct)
+    if hp_percent_loss <= 0.0 and not fainted:
+        hp_percent_loss = 0.0
     return {
         "kind": "damage",
         "turn": turn,
+        "target": identity.pokemon_ref(side, slot),
         "targetSide": side,
+        "role": role,
+        "hpPercentLoss": hp_percent_loss,
+        "direct": True,
+        "attributed": False,
+        "causedKo": fainted,
         "raw": split[3:],
         "provenance": "replay",
     }
+
+
+def _normalize_species_label(name: str) -> str:
+    return name.strip().lower().replace("-", "").replace(" ", "")
+
+
+def _roster_slot_from_ident(ident: str, side: Side, identity: PokemonIdentityMap) -> int | None:
+    hint = ident.split(":")[-1].strip() if ":" in ident else ident.strip()
+    if not hint:
+        return None
+    norm_hint = _normalize_species_label(hint)
+    row = identity.our_species if side == "ours" else identity.opponent_species
+    matches = [
+        idx
+        for idx, name in enumerate(row)
+        if name and _normalize_species_label(name) == norm_hint
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        return matches[0]
+    for idx, name in enumerate(row):
+        if name and norm_hint in _normalize_species_label(name):
+            return idx
+    return None
+
+
+def _parse_showdown_hp_token(token: str) -> tuple[float, bool] | None:
+    text = token.strip()
+    if not text:
+        return None
+    parts = text.split()
+    frac = parts[0]
+    if "/" not in frac:
+        return None
+    cur_raw, max_raw = frac.split("/", 1)
+    try:
+        cur_f = float(cur_raw)
+        max_f = float(max_raw)
+    except ValueError:
+        return None
+    if max_f <= 0:
+        return None
+    fainted = cur_f <= 0 or any(part == "fnt" for part in parts[1:])
+    pct = max(0.0, min(100.0, (cur_f / max_f) * 100.0))
+    return pct, fainted
 
 
 def _protocol_actor(ident: str) -> tuple[str, str]:

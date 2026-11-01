@@ -32,6 +32,35 @@ def test_prepare_sources_limits_our_team_to_four() -> None:
     validate_source_selection(prepared, selection)
 
 
+def test_prepare_sources_accepts_showdown_order_our_four_argument() -> None:
+    stored_four = (0, 1, 3, 5)
+    battles = [
+        make_stored_battle(
+            "b1",
+            "refinement:0001",
+            outcome="win",
+            our_survivors=(3, 5),
+            opponent_survivors=(),
+            our_four=stored_four,
+        ),
+        make_stored_battle(
+            "b2",
+            "refinement:0002",
+            outcome="loss",
+            our_survivors=(3,),
+            opponent_survivors=(0, 1),
+            our_four=stored_four,
+        ),
+    ]
+    prepared = prepare_sources(
+        battles,
+        snapshots=make_snapshots(),
+        token_budget=50_000,
+        our_four=(3, 5, 0, 1),
+    )
+    assert prepared.selectedBattles[0].ourFourSlots == stored_four
+
+
 def test_validate_source_selection_rejects_mismatched_four() -> None:
     battle = normalize_stored_d_battle(
         make_stored_battle(

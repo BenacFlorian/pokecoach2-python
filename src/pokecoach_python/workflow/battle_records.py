@@ -137,7 +137,9 @@ def validate_turn_one_selection(
     accepted = payload.get("previewAccepted")
     if isinstance(accepted, dict):
         preview = accepted.get("ourPreviewSlots")
-        if isinstance(preview, list) and tuple(int(s) for s in preview) != four:
+        if isinstance(preview, list) and canonical_four(
+            tuple(int(s) for s in preview)
+        ) != four:
             raise ValueError("previewAccepted ourPreviewSlots mismatch")
 
 

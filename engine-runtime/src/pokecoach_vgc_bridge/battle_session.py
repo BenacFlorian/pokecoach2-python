@@ -204,8 +204,11 @@ async def create_policy_pair(
         def choose_move(self, battle: Any):
             order = super().choose_move(battle)
             capture = getattr(self, "pokecoach_capture", None)
-            if capture is not None:
-                capture.record_order(turn=int(getattr(battle, "turn", 0) or 0), order=order)
+            if capture is not None and not getattr(battle, "in_team_preview", False):
+                capture.record_order(
+                    turn=int(getattr(battle, "turn", 0) or 0),
+                    order=order,
+                )
             return order
 
         def teampreview(self, battle: Any):

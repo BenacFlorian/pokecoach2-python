@@ -14,6 +14,7 @@ from pokecoach_python.graphs.matchup_gameplan.models import (
 from pokecoach_python.llm.battle_selection import select_d_battles
 from pokecoach_python.llm.battle_sources import StoredDBattle, normalize_stored_d_battle
 from pokecoach_python.llm.battle_statistics import compute_d_statistics
+from pokecoach_python.workflow.battle_records import canonical_four
 
 TokenCounter = Callable[[str], int]
 
@@ -33,9 +34,12 @@ def prepare_sources(
     normalized = [normalize_stored_d_battle(record) for record in records]
     if not normalized:
         raise ValueError("NO_D_BATTLE")
-    our_four = our_four or normalized[0].ourFourSlots
-    if any(record.ourFourSlots != our_four for record in normalized):
+    expected_four = (
+        canonical_four(our_four) if our_four is not None else normalized[0].ourFourSlots
+    )
+    if any(record.ourFourSlots != expected_four for record in normalized):
         raise ValueError("our fixed four must remain stable across D battles")
+    our_four = expected_four
     statistics = compute_d_statistics(normalized)
     manifest = select_d_battles(normalized)
     selected_lookup = {record.battleId: record for record in normalized}

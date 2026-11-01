@@ -207,6 +207,10 @@ def capture_terminal_state_from_battle(
         entered: list[int] = []
         for slot in selected:
             mon = _mon_for_roster_slot(team, int(slot), active_roster)
+            if mon is None:
+                entered.append(slot)
+                survivors.append(slot)
+                continue
             if getattr(mon, "active", False) or getattr(mon, "fainted", False):
                 entered.append(slot)
             elif getattr(mon, "current_hp", 0) < getattr(mon, "max_hp", 1):

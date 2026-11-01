@@ -42,7 +42,9 @@ def run_phase_e(context: PhaseContext) -> PhaseOutput:
         raise RuntimeError("phase E D battle ids do not match refinement.battleIds")
     assert_real_battles_eligible(context.run_provenance, [battle.record for battle in stored])
     selection = checkpoint.leadPick.selection
-    our_four = tuple(selection.ourFourSlots)
+    from pokecoach_python.workflow.battle_records import canonical_four
+
+    our_four = canonical_four(tuple(selection.ourFourSlots))
     prepared = prepare_sources(
         stored,
         snapshots=(context.our_snapshot, context.opponent_snapshot),
@@ -79,14 +81,15 @@ def run_phase_e(context: PhaseContext) -> PhaseOutput:
         output_locale=output_locale,
     )
     validate_strategy_reference_tokens(strategy, our_four=our_four)  # type: ignore[arg-type]
-    strategy = render_strategy_references(
-        strategy,
-        snapshots=(context.our_snapshot, context.opponent_snapshot),
-    )
     validate_strategy_team_references(
         strategy,
         our_snapshot=context.our_snapshot,
         our_four=our_four,  # type: ignore[arg-type]
+        opponent_snapshot=context.opponent_snapshot,
+    )
+    strategy = render_strategy_references(
+        strategy,
+        snapshots=(context.our_snapshot, context.opponent_snapshot),
     )
     context.report_progress("synthesis", 1, 1)
     result = assemble_complete_result(context.partial_result, strategy.model_dump(mode="json"))

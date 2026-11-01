@@ -142,3 +142,19 @@ def test_phase_b_requires_phase_ac_checkpoint():
                 report_progress=lambda *_: None,
             )
         )
+
+
+def test_validate_turn_one_accepts_showdown_leads_first_preview_order():
+    from pokecoach_python.workflow.battle_records import validate_turn_one_selection
+
+    validate_turn_one_selection(
+        {
+            "ourFourSlots": [3, 5, 0, 1],
+            "ourLeadSlots": [3, 5],
+            "opponentLeadSlots": [3, 5],
+            "previewAccepted": {"ourPreviewSlots": [3, 5, 0, 1]},
+        },
+        our_four=(0, 1, 3, 5),
+        our_lead=(3, 5),
+        opponent_lead=(3, 5),
+    )
