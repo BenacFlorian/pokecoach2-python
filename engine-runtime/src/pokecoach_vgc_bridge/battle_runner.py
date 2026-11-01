@@ -158,6 +158,23 @@ async def _battle_through_turn_one(
                 await battle_task
 
 
+from pokecoach_vgc_bridge.showdown_teams import pokecoach_regulation_to_vgc_reg
+
+
+def _battle_format_for_regulation(regulation: str) -> str:
+    from pokecoach_vgc_bridge.extract_turn_one import _DEFAULT_BATTLE_FORMAT
+
+    try:
+        from pokecoach_vgc_bridge.vgc_source import prepare_vgc_bench_source
+
+        prepare_vgc_bench_source()
+        from vgc_bench.src.utils import format_map
+
+        return format_map[pokecoach_regulation_to_vgc_reg(regulation)]
+    except Exception:
+        return _DEFAULT_BATTLE_FORMAT
+
+
 async def _run_first_turn_battle(
     *,
     checkpoint_path: str,
@@ -201,6 +218,7 @@ async def _run_first_turn_battle(
         raise ValueError("simulated lead rejection")
     back_pair = _back_pair_from_preview_four(opp_four)
     our_lead_order = (our_four[0], our_four[1])
+    battle_format = _battle_format_for_regulation(regulation)
     payload = extract_turn_one_payload(
         battle,
         our_snapshot=our_snapshot,
@@ -211,6 +229,7 @@ async def _run_first_turn_battle(
         opponent_lead_order=(opp_four[0], opp_four[1]),
         opponent_active_roster=opp_four,
         our_active_roster=our_four,
+        battle_format=battle_format,
     )
     our_actions = _actions_for_side(
         battle,
@@ -219,6 +238,7 @@ async def _run_first_turn_battle(
         active_roster=our_four,
         our_active_roster=our_four,
         opp_active_roster=opp_four,
+        battle_format=battle_format,
     )
     return build_turn_one(
         opponent_lead=imposed,
@@ -318,6 +338,7 @@ async def _run_full_battle(
             raise ValueError("simulated lead rejection")
 
     opp_back = _back_pair_from_preview_four(opp_four_obs)
+    battle_format = _battle_format_for_regulation(regulation)
     turn1 = extract_turn_one_payload(
         battle,
         our_snapshot=our_snapshot,
@@ -328,6 +349,7 @@ async def _run_full_battle(
         opponent_lead_order=(opp_four_obs[0], opp_four_obs[1]),
         opponent_active_roster=opp_four_obs,
         our_active_roster=our_four,
+        battle_format=battle_format,
     )
     our_lead_order = (our_four[0], our_four[1])
     our_actions = _actions_for_side(
@@ -337,6 +359,7 @@ async def _run_full_battle(
         active_roster=our_four,
         our_active_roster=our_four,
         opp_active_roster=opp_four_obs,
+        battle_format=battle_format,
     )
     if p1.n_won_battles > 0:
         outcome = "win"

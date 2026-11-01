@@ -2,6 +2,13 @@
 
 Ces documents préparent le développement ; ils ne signifient pas que le serveur ou les simulations sont déjà implémentés.
 
+**Suite du POC — corrections du 1er novembre 2026, dans cet ordre :**
+
+1. [Plan 12 — Cibles des capacités issues de Showdown](plans/2026-11-01-12-cibles-capacites-showdown.md) : les 15 catégories du Dex local, normalisation backend et affichage Angular des portées individuelles/collectives. Corrige notamment `Tailwind → Aerodactyl`.
+2. [Plan 13 — Quatre imposé, traces complètes et gameplan cohérent](plans/2026-11-01-13-fiabilite-simulations-traces-gameplan.md) : imposition du quatre en B, décisions acceptées et switches, historiques complets C/D, contrôles des sources et des références LLM, détails de résolution Angular.
+
+Ces deux plans couvrent les changements Python **et Angular** et sont à implémenter, pas déjà exécutés. Ils partent du code actuel où E existe : le diagnostic a trouvé des traces D limitées au T1 et des conseils mentionnant un Pokémon hors du quatre. Les mentions historiques « E reste à implémenter » ci-dessous ne décrivent plus l'état courant. Le plan 13 conserve l'architecture de E et dépend du contrat de ciblage du plan 12.
+
 Évolution validée le 1er novembre 2026 : [plan backend 10 — ouvertures conditionnées à notre sélection](plans/2026-11-01-10-ouvertures-conditionnees-au-lead.md), puis [plan frontend 5](../../pokecoach2-angular/docs/plans/2026-11-01-05-ouvertures-conditionnees-lead-pick.md). Ils couvrent **A → C → B → D**, le remplacement du contrat actuel après nettoyage des anciennes analyses et les tours 1 des deux côtés pour notre quatre/lead fixes. **E est hors périmètre** : son plan dédié reste à implémenter et viendra conclure le processus. Les plans historiques ci-dessous décrivent l’ancien ordre jusqu’à l’application de cette évolution.
 
 Nouvelle évolution à implémenter : [plan 11 — phase D, évaluation globale de notre sélection](plans/2026-11-01-11-phase-d-affinage-global.md). Il remplace l’affinage sur un scénario unique par un échantillonnage sur **tous les leads de A et leurs backs B**, avec notre sélection C fixe. Budget conservé à **2 standard / 2 smoke pour tester**, correction des contraintes du moteur réel et adaptation du bloc Angular D incluses. Les anciennes analyses seront nettoyées à la bascule, sans nouvelle version de résultat ; E reste hors périmètre. Les descriptions de D dans les plans 08 et 10 restent historiques jusqu’à cette refonte.

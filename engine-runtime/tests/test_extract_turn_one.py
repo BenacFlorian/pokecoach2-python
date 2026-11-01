@@ -41,12 +41,14 @@ def test_turn1_actions_from_replay_maps_roles_to_lead_slots():
     assert actions is not None
     assert actions[0]["actor"]["slot"] == 2
     assert actions[0]["move"] == "Earthquake"
+    assert actions[0]["targetType"] == "allAdjacent"
+    assert actions[0]["targets"] == [{"kind": "zone", "zone": "allAdjacent"}]
     assert actions[1]["actor"]["slot"] == 4
     assert actions[1]["move"] == "Protect"
     assert actions[1]["targets"][0]["ref"]["slot"] == 4
 
 
-def test_turn1_replay_tailwind_uses_field_target():
+def test_turn1_replay_tailwind_ignores_decorative_target_token():
     replay = [
         ["", "move", "p1a: Staraptor", "Tailwind"],
         ["", "move", "p1b: Gholdengo", "Protect", "p1b: Gholdengo"],
@@ -63,7 +65,8 @@ def test_turn1_replay_tailwind_uses_field_target():
     )
     assert actions is not None
     assert actions[0]["move"] == "Tailwind"
-    assert actions[0]["targets"] == [{"kind": "zone", "zone": "field"}]
+    assert actions[0]["targets"] == [{"kind": "zone", "zone": "allySide"}]
+    assert actions[0]["targetType"] == "allySide"
 
 
 def test_mon_for_roster_slot_maps_bring_four_team():

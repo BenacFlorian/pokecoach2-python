@@ -239,6 +239,37 @@ def _move_name(snapshot: dict[str, Any], slot: int, move_idx: int) -> str:
     return "Tackle"
 
 
+from pokecoach_vgc_bridge.move_targets import enrich_move_action, load_move_catalog, resolve_move_target
+
+_FIXTURE_FORMAT = "gen9championsvgc2026regma"
+
+
+def _fixture_move_action(
+    *,
+    side: str,
+    slot: int,
+    move: str,
+    target_side: str,
+    target_slot: int | None,
+) -> dict[str, Any]:
+    catalog = load_move_catalog(_FIXTURE_FORMAT)
+    info = resolve_move_target(move, catalog)
+    action = {
+        "kind": "move",
+        "actor": {"side": side, "slot": slot},
+        "move": move,
+        "targets": [],
+    }
+    return enrich_move_action(
+        action,
+        info,
+        actor_side=side,
+        actor_slot=slot,
+        target_side=target_side,
+        target_roster_slot=target_slot,
+    )
+
+
 def _opponent_turn1_actions(
     opp: dict[str, Any],
     lead: tuple[int, int],
@@ -246,28 +277,20 @@ def _opponent_turn1_actions(
 ) -> list[dict[str, Any]]:
     slot_a, slot_b = lead
     return [
-        {
-            "kind": "move",
-            "actor": {"side": "opponent", "slot": slot_a},
-            "move": _move_name(opp, slot_a, digest[1]),
-            "targets": [
-                {
-                    "kind": "pokemon",
-                    "ref": {"side": "ours", "slot": digest[2] % 6},
-                }
-            ],
-        },
-        {
-            "kind": "move",
-            "actor": {"side": "opponent", "slot": slot_b},
-            "move": _move_name(opp, slot_b, digest[3]),
-            "targets": [
-                {
-                    "kind": "pokemon",
-                    "ref": {"side": "ours", "slot": digest[4] % 6},
-                }
-            ],
-        },
+        _fixture_move_action(
+            side="opponent",
+            slot=slot_a,
+            move=_move_name(opp, slot_a, digest[1]),
+            target_side="ours",
+            target_slot=digest[2] % 6,
+        ),
+        _fixture_move_action(
+            side="opponent",
+            slot=slot_b,
+            move=_move_name(opp, slot_b, digest[3]),
+            target_side="ours",
+            target_slot=digest[4] % 6,
+        ),
     ]
 
 
@@ -278,28 +301,20 @@ def _our_turn1_actions(
 ) -> list[dict[str, Any]]:
     slot_a, slot_b = lead
     return [
-        {
-            "kind": "move",
-            "actor": {"side": "ours", "slot": slot_a},
-            "move": _move_name(our, slot_a, digest[5]),
-            "targets": [
-                {
-                    "kind": "pokemon",
-                    "ref": {"side": "opponent", "slot": digest[6] % 6},
-                }
-            ],
-        },
-        {
-            "kind": "move",
-            "actor": {"side": "ours", "slot": slot_b},
-            "move": _move_name(our, slot_b, digest[7]),
-            "targets": [
-                {
-                    "kind": "pokemon",
-                    "ref": {"side": "opponent", "slot": digest[8] % 6},
-                }
-            ],
-        },
+        _fixture_move_action(
+            side="ours",
+            slot=slot_a,
+            move=_move_name(our, slot_a, digest[5]),
+            target_side="opponent",
+            target_slot=digest[6] % 6,
+        ),
+        _fixture_move_action(
+            side="ours",
+            slot=slot_b,
+            move=_move_name(our, slot_b, digest[7]),
+            target_side="opponent",
+            target_slot=digest[8] % 6,
+        ),
     ]
 
 

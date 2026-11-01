@@ -5,6 +5,12 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from pokecoach_vgc_bridge.move_targets import (
+    enrich_move_action,
+    load_move_catalog,
+    resolve_move_target,
+)
+
 # Showdown move ids without separators (replay / poke-env ids).
 _MOVE_ID_ALIASES: dict[str, str] = {
     "dualwingbeat": "Dual Wingbeat",
@@ -31,41 +37,7 @@ _MOVE_ID_ALIASES: dict[str, str] = {
     "quickguard": "Quick Guard",
 }
 
-_FIELD_MOVE_IDS = frozenset(
-    {
-        "tailwind",
-        "trickroom",
-        "raindance",
-        "sunnyday",
-        "snowscape",
-        "hail",
-        "gravity",
-        "wonderroom",
-        "magicroom",
-        "lightscreen",
-        "reflect",
-        "auroraveil",
-        "helpinghand",
-        "followme",
-        "ragepowder",
-    }
-)
-
-_SELF_TARGET_MOVE_IDS = frozenset(
-    {
-        "protect",
-        "detect",
-        "spikyshield",
-        "banefulbunker",
-        "kingsshield",
-        "obstruct",
-        "silktrap",
-        "burningbulwark",
-        "endure",
-        "wideguard",
-        "quickguard",
-    }
-)
+_DEFAULT_BATTLE_FORMAT = "gen9championsvgc2026regma"
 
 
 def extract_turn_one_payload(
@@ -79,6 +51,7 @@ def extract_turn_one_payload(
     opponent_lead_order: tuple[int, int] | None = None,
     opponent_active_roster: tuple[int, int, int, int] | None = None,
     our_active_roster: tuple[int, int, int, int] | None = None,
+    battle_format: str = _DEFAULT_BATTLE_FORMAT,
 ) -> dict[str, Any]:
     """Build turn-1 payload from battle state after turn 1 resolved."""
     _ = our_snapshot, opponent_snapshot
@@ -90,6 +63,7 @@ def extract_turn_one_payload(
         active_roster=opponent_active_roster,
         our_active_roster=our_active_roster,
         opp_active_roster=opponent_active_roster,
+        battle_format=battle_format,
     )
     if opponent_back_pair is not None:
         back_pair = opponent_back_pair
@@ -142,6 +116,7 @@ def _actions_for_side(
     active_roster: tuple[int, ...] | None = None,
     our_active_roster: tuple[int, ...] | None = None,
     opp_active_roster: tuple[int, ...] | None = None,
+    battle_format: str = _DEFAULT_BATTLE_FORMAT,
 ) -> list[dict[str, Any]]:
     target_side = "ours" if side == "opponent" else "opponent"
     from_replay = _turn1_actions_from_replay(
@@ -151,6 +126,7 @@ def _actions_for_side(
         target_side=target_side,
         our_active_roster=our_active_roster,
         opp_active_roster=opp_active_roster,
+        battle_format=battle_format,
     )
     if from_replay is not None:
         return from_replay
@@ -160,19 +136,24 @@ def _actions_for_side(
     else:
         team = list(getattr(battle, "team", {}).values())
 
+    catalog = load_move_catalog(battle_format)
+
     actions: list[dict[str, Any]] = []
     for slot in lead_order:
         mon = _mon_for_roster_slot(team, int(slot), active_roster)
         move = _move_label(mon)
-        targets = _targets_for_move(
-            move,
-            actor_side=side,
-            actor_slot=int(slot),
-            target_side=target_side,
-            target_roster_slot=None,
-        )
+        request_target = _request_target_from_mon(mon)
+        info = resolve_move_target(move, catalog, request_target=request_target)
+        action = _move_action(side=side, slot=int(slot), move=move, targets=[])
         actions.append(
-            _move_action(side=side, slot=int(slot), move=move, targets=targets),
+            enrich_move_action(
+                action,
+                info,
+                actor_side=side,
+                actor_slot=int(slot),
+                target_side=target_side,
+                target_roster_slot=None,
+            )
         )
     if len(actions) != 2:
         raise RuntimeError("TURN1_EXTRACT: expected two lead actions")
@@ -187,6 +168,7 @@ def _turn1_actions_from_replay(
     target_side: str,
     our_active_roster: tuple[int, ...] | None,
     opp_active_roster: tuple[int, ...] | None,
+    battle_format: str = _DEFAULT_BATTLE_FORMAT,
 ) -> list[dict[str, Any]] | None:
     replay = getattr(battle, "_replay_data", None)
     if not replay:
@@ -228,6 +210,7 @@ def _turn1_actions_from_replay(
         return None
 
     slot_a, slot_b = int(lead_order[0]), int(lead_order[1])
+    catalog = load_move_catalog(battle_format)
     out: list[dict[str, Any]] = []
     for role, slot in (("a", slot_a), ("b", slot_b)):
         move, target_token = moves[role]
@@ -238,16 +221,18 @@ def _turn1_actions_from_replay(
             our_active_roster=our_active_roster,
             opp_active_roster=opp_active_roster,
         )
-        targets = _targets_for_move(
-            move,
-            actor_side=side,
-            actor_slot=slot,
-            target_side=target_side,
-            target_roster_slot=target_roster,
-            target_token=target_token,
-            actor_prefix=prefix,
+        info = resolve_move_target(move, catalog)
+        action = _move_action(side=side, slot=slot, move=move, targets=[])
+        out.append(
+            enrich_move_action(
+                action,
+                info,
+                actor_side=side,
+                actor_slot=slot,
+                target_side=target_side,
+                target_roster_slot=target_roster,
+            )
         )
-        out.append(_move_action(side=side, slot=slot, move=move, targets=targets))
     return out
 
 
@@ -283,50 +268,15 @@ def _target_roster_slot_from_token(
     return None
 
 
-def _move_id_key(move: str) -> str:
-    return move.strip().lower().replace("-", "").replace(" ", "")
-
-
-def _targets_for_move(
-    move: str,
-    *,
-    actor_side: str,
-    actor_slot: int,
-    target_side: str,
-    target_roster_slot: int | None,
-    target_token: str | None = None,
-    actor_prefix: str | None = None,
-) -> list[dict[str, Any]]:
-    move_key = _move_id_key(move)
-    if target_roster_slot is not None:
-        return [
-            {
-                "kind": "pokemon",
-                "ref": {"side": target_side, "slot": target_roster_slot},
-            }
-        ]
-    if target_token and actor_prefix and target_token.startswith(f"{actor_prefix}"):
-        return [
-            {
-                "kind": "pokemon",
-                "ref": {"side": actor_side, "slot": actor_slot},
-            }
-        ]
-    if move_key in _SELF_TARGET_MOVE_IDS:
-        return [
-            {
-                "kind": "pokemon",
-                "ref": {"side": actor_side, "slot": actor_slot},
-            }
-        ]
-    if move_key in _FIELD_MOVE_IDS:
-        return [{"kind": "zone", "zone": "field"}]
-    if move == "Unknown" or not move_key:
-        return [{"kind": "zone", "zone": "field"}]
-    # Spread / multi-hit without explicit target in replay
-    if move_key in {"electroweb", "snarl", "breakingswipe", "bulldoze", "hypervoice"}:
-        return [{"kind": "zone", "zone": "all-opponents"}]
-    return [{"kind": "zone", "zone": "field"}]
+def _request_target_from_mon(mon: Any) -> Any:
+    for move in getattr(mon, "moves", {}).values():
+        if getattr(move, "is_last_used", False):
+            return getattr(move, "target", None)
+    for attr in ("last_move", "prepared_move"):
+        val = getattr(mon, attr, None)
+        if val is not None:
+            return getattr(val, "target", None)
+    return None
 
 
 def _move_action(
