@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from pokecoach_python.db.analysis_repository import AnalysisRepository, ClaimedRun, _initial_provenance
 from pokecoach_python.engine.contracts import BattleRecord
@@ -105,6 +106,7 @@ class WorkflowRunner:
             profile = str(row.parameters.get("profile", "standard"))
             seed = _parse_seed(row.parameters)
             accumulated_partial = dict(row.partial_result)
+            run_started = time.perf_counter()
 
             def progress(phase: str, done: int, total: int) -> None:
                 if not self._repo.update_progress(
@@ -117,6 +119,13 @@ class WorkflowRunner:
             for index, phase in enumerate(pending):
                 completed = list(accumulated_partial.get("completedPhases") or [])
                 remaining = pending[index + 1 :]
+                phase_started = time.perf_counter()
+                if phase == "synthesis":
+                    logger.info(
+                        "run %s: phase E start elapsedSinceRunClaimMs=%d",
+                        run_id,
+                        int((phase_started - run_started) * 1000),
+                    )
                 handler = handler_for(phase)
                 if handler is None:
                     if not completed:
@@ -182,13 +191,22 @@ class WorkflowRunner:
                     analysis_repository=self._repo,
                 )
                 output = handler(ctx)
+                phase_duration_ms = int((time.perf_counter() - phase_started) * 1000)
                 logger.info(
-                    "run %s: phase %s done (pause=%s defer=%s)",
+                    "run %s: phase %s done durationMs=%d (pause=%s defer=%s)",
                     run_id,
                     output.phase,
+                    phase_duration_ms,
                     _should_pause_after_phase(output.phase, row.target_phase, remaining),
                     _defer_publish_after_phase(output.phase, remaining),
                 )
+                if output.phase == "synthesis":
+                    logger.info(
+                        "run %s: phase E complete runClaimToPhaseECompleteMs=%d phaseEMs=%d",
+                        run_id,
+                        int((time.perf_counter() - run_started) * 1000),
+                        phase_duration_ms,
+                    )
                 if _defer_publish_after_phase(output.phase, remaining):
                     accumulated_partial = output.result.model_dump(mode="json")
                     continue

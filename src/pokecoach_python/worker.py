@@ -67,6 +67,7 @@ class WorkerSupervisor:
             token = claim.lease_token
             self._active = (run_id, token)
             last_beat = time.monotonic()
+            run_started = time.perf_counter()
             try:
                 import threading
 
@@ -90,7 +91,11 @@ class WorkerSupervisor:
                         last_beat = time.monotonic()
                 worker_thread.join(timeout=5)
                 if done.is_set():
-                    logger.info("finished run %s", run_id)
+                    logger.info(
+                        "finished run %s durationMs=%d",
+                        run_id,
+                        int((time.perf_counter() - run_started) * 1000),
+                    )
             finally:
                 self._active = None
         logger.info("worker stopped")

@@ -28,10 +28,10 @@ class PhaseBudgets(TypedDict):
 
 
 STANDARD: PhaseBudgets = {
-    "A": 100,
-    "B": 5,
-    "C": 5,
-    "D": 2,
+    "A": 500,
+    "B": 30,
+    "C": 20,
+    "D": 20,
 }
 
 SMOKE: PhaseBudgets = {

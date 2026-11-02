@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import time
 import uuid
 from typing import Any
 
@@ -20,8 +22,11 @@ from pokecoach_python.llm.strategy_references import (
 from pokecoach_python.schemas.analysis_result import SimulationResultV2, validate_result
 from pokecoach_python.workflow.types import PhaseContext, PhaseOutput
 
+logger = logging.getLogger(__name__)
+
 
 def run_phase_e(context: PhaseContext) -> PhaseOutput:
+    phase_started = time.perf_counter()
     checkpoint = _load_phase_acbd(context.partial_result)
     if context.settings is None:
         raise RuntimeError("phase E requires settings")
@@ -45,6 +50,7 @@ def run_phase_e(context: PhaseContext) -> PhaseOutput:
     from pokecoach_python.workflow.battle_records import canonical_four
 
     our_four = canonical_four(tuple(selection.ourFourSlots))
+    prepare_started = time.perf_counter()
     prepared = prepare_sources(
         stored,
         snapshots=(context.our_snapshot, context.opponent_snapshot),
@@ -53,7 +59,9 @@ def run_phase_e(context: PhaseContext) -> PhaseOutput:
         model_name=settings.synthesis_model_name(),
         our_four=our_four,  # type: ignore[arg-type]
     )
+    prepare_sources_ms = int((time.perf_counter() - prepare_started) * 1000)
     validate_source_selection(prepared, selection)
+    persist_started = time.perf_counter()
     try:
         store.create_sources(
             run_id=context.run_id,
@@ -70,8 +78,10 @@ def run_phase_e(context: PhaseContext) -> PhaseOutput:
             expected_revision=context.result_revision,
             sources=prepared,
         )
+    persist_sources_ms = int((time.perf_counter() - persist_started) * 1000)
     execution_id = f"synthesis-{uuid.uuid4()}"
     output_locale = parse_output_locale(context.parameters.get("locale"))
+    graph_started = time.perf_counter()
     strategy = invoke_matchup_gameplan(
         run_id=context.run_id,
         sources_hash=prepared.sourceHash,
@@ -80,6 +90,8 @@ def run_phase_e(context: PhaseContext) -> PhaseOutput:
         client=client,
         output_locale=output_locale,
     )
+    graph_invoke_ms = int((time.perf_counter() - graph_started) * 1000)
+    validate_started = time.perf_counter()
     validate_strategy_reference_tokens(strategy, our_four=our_four)  # type: ignore[arg-type]
     validate_strategy_team_references(
         strategy,
@@ -91,6 +103,7 @@ def run_phase_e(context: PhaseContext) -> PhaseOutput:
         strategy,
         snapshots=(context.our_snapshot, context.opponent_snapshot),
     )
+    validate_render_ms = int((time.perf_counter() - validate_started) * 1000)
     context.report_progress("synthesis", 1, 1)
     result = assemble_complete_result(context.partial_result, strategy.model_dump(mode="json"))
     invocation_meta = dict(client.last_invocation or {})
@@ -104,6 +117,19 @@ def run_phase_e(context: PhaseContext) -> PhaseOutput:
         "model": settings.synthesis_model_name(),
         "outputLocale": output_locale,
     }
+    logger.info(
+        "run %s: phase E timing prepareSourcesMs=%d persistSourcesMs=%d graphInvokeMs=%d "
+        "validateRenderMs=%d totalMs=%d dBattles=%d selectedBattles=%d llmDurationMs=%s",
+        context.run_id,
+        prepare_sources_ms,
+        persist_sources_ms,
+        graph_invoke_ms,
+        validate_render_ms,
+        int((time.perf_counter() - phase_started) * 1000),
+        len(stored),
+        len(prepared.manifest.selectedBattleIds),
+        invocation_meta.get("durationMs"),
+    )
     return PhaseOutput(
         phase="synthesis",
         result=result,

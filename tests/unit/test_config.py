@@ -53,3 +53,9 @@ def test_synthesis_budget_helpers():
     assert settings.synthesis_model_name() == "deepseek-ai/DeepSeek-V4.1-Flash-1017"
     assert settings.synthesis_output_token_limit() == 1500
     assert settings.synthesis_source_token_budget(prompt_overhead_tokens=500) == 8000
+
+
+def test_synthesis_source_budget_default_100k_input():
+    settings = Settings(_env_file=None, POSTGRES_PASSWORD="secret")
+    assert settings.llm_input_token_budget == 100_000
+    assert settings.synthesis_source_token_budget() == 100_000 - 1200 - 512

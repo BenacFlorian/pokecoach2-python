@@ -78,7 +78,7 @@ class Settings(BaseSettings):
         alias="LLM_MODEL",
         default="deepseek-ai/DeepSeek-V4.1-Flash-1017",
     )
-    llm_input_token_budget: int = Field(alias="LLM_INPUT_TOKEN_BUDGET", default=24000)
+    llm_input_token_budget: int = Field(alias="LLM_INPUT_TOKEN_BUDGET", default=100_000)
     llm_output_token_budget: int = Field(alias="LLM_OUTPUT_TOKEN_BUDGET", default=1200)
     llm_timeout_seconds: float = Field(alias="LLM_TIMEOUT_SECONDS", default=45.0)
     deepinfra_api_key: SecretStr | None = Field(alias="DEEPINFRA_API_KEY", default=None)
