@@ -15,7 +15,10 @@ from sqlmodel import Session
 
 from pokecoach_python.core.config import Settings
 from pokecoach_python.db.analysis_repository import AnalysisRepository
-from pokecoach_python.engine.capabilities import engine_supported_phases, synthesis_available
+from pokecoach_python.engine.capabilities import (
+    engine_supported_phases,
+    synthesis_available,
+)
 from pokecoach_python.engine.factory import build_engine_adapter
 from pokecoach_python.workflow.registry import phase_order
 from pokecoach_python.schemas.analysis_commands import (
@@ -56,13 +59,16 @@ def analysis_capabilities(settings: Settings) -> AnalysisCapabilitiesResponse:
                 "message": "Configuration d’analyse indisponible.",
             },
         )
-    if settings.engine_mode.lower() == "vgc_bench" and not settings.vgc_checkpoint_path:
+    if (
+        settings.engine_mode.lower() == "vgc_bench"
+        and not settings.vgc_engine_configured()
+    ):
         if not synth_available:
             raise HTTPException(
                 status_code=503,
                 detail={
                     "code": "ENGINE_UNAVAILABLE",
-                    "message": "Checkpoint VGC non configuré (VGC_CHECKPOINT_PATH).",
+                    "message": "Checkpoint VGC non configuré (VGC_MODEL_PROFILE ou VGC_CHECKPOINT_PATH).",
                 },
             )
         return AnalysisCapabilitiesResponse(
@@ -79,7 +85,10 @@ def analysis_capabilities(settings: Settings) -> AnalysisCapabilitiesResponse:
         engine.hello()
         if settings.engine_mode.lower() == "stub":
             engine.preflight(
-                {"regulation": regulations[0], "checkpoint_id": settings.analysis_checkpoint_id},
+                {
+                    "regulation": regulations[0],
+                    "checkpoint_id": settings.analysis_checkpoint_id,
+                },
                 ({}, {}),
             )
         phases = engine_supported_phases(engine, settings)
@@ -202,7 +211,9 @@ def _http_status_for_run(status: str) -> int:
     return 202 if status in ("queued", "running") else 200
 
 
-def _response_from_repo(repo: AnalysisRepository, run_id: uuid.UUID) -> AnalysisStartResponse:
+def _response_from_repo(
+    repo: AnalysisRepository, run_id: uuid.UUID
+) -> AnalysisStartResponse:
     payload = repo.load_run_response(run_id)
     return AnalysisStartResponse.model_validate(payload)
 
@@ -240,7 +251,9 @@ def start_analysis(
 
     matchup = _load_matchup(session, matchup_id)
     try:
-        repo.apply_matchup_regulation(matchup_id, settings.analysis_regulation_default())
+        repo.apply_matchup_regulation(
+            matchup_id, settings.analysis_regulation_default()
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=404,
@@ -331,14 +344,21 @@ def continue_analysis(
     existing = repo.find_command(idempotency_key)
     if existing is not None:
         if existing.request_hash != fingerprint or existing.run_id != run_id:
-            raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_CONFLICT"})
-        response = AnalysisContinueResponse.model_validate(repo.load_run_response(run_id))
+            raise HTTPException(
+                status_code=409, detail={"code": "IDEMPOTENCY_CONFLICT"}
+            )
+        response = AnalysisContinueResponse.model_validate(
+            repo.load_run_response(run_id)
+        )
         return response, _http_status_for_run(response.status)
 
     if body.target_phase not in settings.analysis_deployed_phase_list():
         raise HTTPException(
             status_code=422,
-            detail={"code": "PHASE_NOT_DEPLOYED", "message": "Phase cible non disponible."},
+            detail={
+                "code": "PHASE_NOT_DEPLOYED",
+                "message": "Phase cible non disponible.",
+            },
         )
     try:
         repo.record_continue_command(
@@ -353,7 +373,9 @@ def continue_analysis(
             detail={"code": "CONTINUE_REJECTED", "message": str(exc)},
         ) from exc
     except SQLAlchemyError as exc:
-        raise HTTPException(status_code=503, detail={"code": "DATABASE_UNAVAILABLE"}) from exc
+        raise HTTPException(
+            status_code=503, detail={"code": "DATABASE_UNAVAILABLE"}
+        ) from exc
 
     response = AnalysisContinueResponse.model_validate(repo.load_run_response(run_id))
     return response, 202
@@ -371,7 +393,9 @@ def cancel_analysis(
     existing = repo.find_command(idempotency_key)
     if existing is not None:
         if existing.request_hash != fingerprint or existing.run_id != run_id:
-            raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_CONFLICT"})
+            raise HTTPException(
+                status_code=409, detail={"code": "IDEMPOTENCY_CONFLICT"}
+            )
         return AnalysisCancelResponse.model_validate(repo.load_run_response(run_id))
     try:
         repo.record_cancel_command(
@@ -385,5 +409,7 @@ def cancel_analysis(
             detail={"code": "CANCEL_REJECTED", "message": str(exc)},
         ) from exc
     except SQLAlchemyError as exc:
-        raise HTTPException(status_code=503, detail={"code": "DATABASE_UNAVAILABLE"}) from exc
+        raise HTTPException(
+            status_code=503, detail={"code": "DATABASE_UNAVAILABLE"}
+        ) from exc
     return AnalysisCancelResponse.model_validate(repo.load_run_response(run_id))

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
 from pokecoach_vgc_bridge.fixture_sim import FixtureRuntime
@@ -11,12 +12,23 @@ from pokecoach_vgc_bridge.policy import load_manifest
 
 class BridgeRuntime:
     def __init__(self, *, checkpoint_path: str, manifest_path: str) -> None:
-        self._checkpoint_path = checkpoint_path.strip()
         self._manifest_path = manifest_path
         self._manifest = load_manifest(manifest_path)
         self._fixture_allowed = os.environ.get("POKECOACH_BRIDGE_FIXTURE") == "1"
         self._fixture = FixtureRuntime(manifest_path) if self._fixture_allowed else None
         self._real = None
+        profile_path = os.environ.get("VGC_MODEL_PROFILE", "").strip()
+        resolved_checkpoint = checkpoint_path.strip()
+        if profile_path:
+            from pokecoach_vgc_bridge.model_profile import load_vgc_model_profile
+
+            profile = load_vgc_model_profile(Path(profile_path))
+            resolved_checkpoint = str(profile.resolved_checkpoint_path)
+            if profile.checkpoint_sha256:
+                os.environ.setdefault(
+                    "POKECOACH_CHECKPOINT_SHA256", profile.checkpoint_sha256
+                )
+        self._checkpoint_path = resolved_checkpoint
         if self._checkpoint_path and not self._fixture_allowed:
             from pokecoach_vgc_bridge import vgc_real
 

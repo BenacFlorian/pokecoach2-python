@@ -6,15 +6,24 @@ import os
 from typing import Any
 
 from pokecoach_vgc_bridge.checkpoint import verify_checkpoint
+from pokecoach_vgc_bridge.model_profile import (
+    VgcModelProfile,
+    load_vgc_model_profile_from_env,
+)
 from pokecoach_vgc_bridge.policy import load_manifest
-from pokecoach_vgc_bridge.showdown_teams import pokecoach_regulation_to_vgc_reg, snapshot_to_showdown_export
+from pokecoach_vgc_bridge.showdown_teams import (
+    pokecoach_regulation_to_vgc_reg,
+    snapshot_to_showdown_export,
+)
 
 
 def try_load(checkpoint_path: str, manifest_path: str) -> RealRuntime | None:
-    if not checkpoint_path or not os.path.isfile(checkpoint_path):
+    profile = load_vgc_model_profile_from_env()
+    path = str(profile.resolved_checkpoint_path) if profile else checkpoint_path
+    if not path or not os.path.isfile(path):
         return None
     try:
-        return RealRuntime(checkpoint_path, manifest_path)
+        return RealRuntime(path, manifest_path, model_profile=profile)
     except Exception:
         return None
 
@@ -22,15 +31,26 @@ def try_load(checkpoint_path: str, manifest_path: str) -> RealRuntime | None:
 class RealRuntime:
     """Loads BC checkpoint and drives Showdown via poke-env + vgc-bench."""
 
-    def __init__(self, checkpoint_path: str, manifest_path: str) -> None:
+    def __init__(
+        self,
+        checkpoint_path: str,
+        manifest_path: str,
+        *,
+        model_profile: VgcModelProfile | None = None,
+    ) -> None:
         self._checkpoint_path = checkpoint_path
+        self._profile = model_profile
         self._manifest = load_manifest(manifest_path)
-        expected = os.environ.get("POKECOACH_CHECKPOINT_SHA256") or None
+        expected = None
+        if model_profile and model_profile.checkpoint_sha256:
+            expected = model_profile.checkpoint_sha256
+        if not expected:
+            expected = os.environ.get("POKECOACH_CHECKPOINT_SHA256") or None
         self._fingerprint = verify_checkpoint(checkpoint_path, expected)
-        self._device_note = "cpu"
+        self._device_note = model_profile.inference.device if model_profile else "cpu"
 
     def hello(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "engine": "vgc-bench",
             "protocolVersion": 1,
             "supportedModes": [
@@ -44,10 +64,16 @@ class RealRuntime:
             "manifest": self._manifest,
             "checkpointLoaded": True,
             "checkpointFingerprint": self._fingerprint[:16],
+            "checkpointSha256": self._fingerprint,
             "stochastic": True,
             "normalizerVersion": self._manifest.get("normalizerVersion", 1),
             "traceVersion": 1,
         }
+        if self._profile is not None:
+            payload["modelId"] = self._profile.model_id
+            payload["architecture"] = self._profile.architecture_dict
+            payload["modelProfile"] = str(self._profile.profile_path)
+        return payload
 
     def handle(self, mode: str, payload: dict[str, Any]) -> dict[str, Any]:
         if mode == "preflight":
@@ -71,9 +97,12 @@ class RealRuntime:
         snapshot_to_showdown_export(opp)
         reg_key = pokecoach_regulation_to_vgc_reg(regulation)
         deps_ok = _deps_ok()
+        checkpoint_id = str(config.get("checkpoint_id", ""))
+        if self._profile is not None:
+            checkpoint_id = self._profile.model_id
         return {
             "regulation": regulation,
-            "checkpointId": str(config.get("checkpoint_id", "")),
+            "checkpointId": checkpoint_id,
             "checkpointFingerprint": self._fingerprint[:16],
             "showdownFormat": _format_for_reg(payload, reg_key),
             "supportsPreview": deps_ok,

@@ -21,10 +21,10 @@ from pokecoach_python.workflow.battle_records import battle_record_from_payload
 class VgcBenchEngineAdapter(EngineAdapter):
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        if not settings.vgc_checkpoint_path and not _fixture_allowed():
+        if not settings.vgc_engine_configured() and not _fixture_allowed():
             raise EngineUnavailableError(
                 "CHECKPOINT_UNCONFIGURED",
-                "VGC_CHECKPOINT_PATH is required for POKECOACH_ENGINE=vgc_bench",
+                "VGC_MODEL_PROFILE or VGC_CHECKPOINT_PATH is required for POKECOACH_ENGINE=vgc_bench",
             )
         self._client = VgcSubprocessClient(settings)
         self._hello: dict[str, Any] | None = None

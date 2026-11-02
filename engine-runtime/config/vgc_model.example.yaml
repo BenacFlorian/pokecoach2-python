@@ -1,0 +1,21 @@
+# Seul fichier à éditer pour changer de modèle (pointé par VGC_MODEL_PROFILE).
+model_id: bc-tiny-mb-002
+
+checkpoint:
+  path: ../../../pokecoach2-trainer/pokecoach-trainer/storage/runs/bc-tiny-smoke/final.zip
+  sha256: null
+
+architecture:
+  d_model: 128
+  num_layers: 2
+  num_heads: 4
+  embed_len: 32
+  choose_on_teampreview: true
+
+inference:
+  device: auto
+  deterministic: true
+
+# Alternative après export Trainer :
+# model_id: bc-tiny-smoke
+# trainer_package_dir: /chemin/vers/storage/models/bc-tiny-smoke/package

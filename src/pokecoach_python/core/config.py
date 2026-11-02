@@ -25,7 +25,9 @@ class Settings(BaseSettings):
     postgres_db: str = Field(alias="POSTGRES_DB", default="pokecoach2")
     postgres_user: str = Field(alias="POSTGRES_USER", default="pokecoach_worker")
     postgres_password: SecretStr = Field(alias="POSTGRES_PASSWORD")
-    db_connect_timeout_seconds: int = Field(alias="DB_CONNECT_TIMEOUT_SECONDS", default=5)
+    db_connect_timeout_seconds: int = Field(
+        alias="DB_CONNECT_TIMEOUT_SECONDS", default=5
+    )
     enable_demo_seed: bool = Field(alias="ENABLE_DEMO_SEED", default=False)
     analysis_regulations: str = Field(
         alias="ANALYSIS_REGULATIONS",
@@ -46,9 +48,14 @@ class Settings(BaseSettings):
     engine_mode: str = Field(alias="POKECOACH_ENGINE", default="stub")
     vgc_bench_root: str | None = Field(alias="VGC_BENCH_ROOT", default=None)
     vgc_bridge_python: str | None = Field(alias="VGC_BRIDGE_PYTHON", default=None)
-    vgc_bridge_manifest_path: str | None = Field(alias="VGC_BRIDGE_MANIFEST", default=None)
+    vgc_bridge_manifest_path: str | None = Field(
+        alias="VGC_BRIDGE_MANIFEST", default=None
+    )
     vgc_checkpoint_path: str | None = Field(alias="VGC_CHECKPOINT_PATH", default=None)
-    vgc_checkpoint_sha256: str | None = Field(alias="VGC_CHECKPOINT_SHA256", default=None)
+    vgc_checkpoint_sha256: str | None = Field(
+        alias="VGC_CHECKPOINT_SHA256", default=None
+    )
+    vgc_model_profile: str | None = Field(alias="VGC_MODEL_PROFILE", default=None)
     showdown_server_url: str = Field(
         alias="SHOWDOWN_SERVER_URL",
         default="ws://127.0.0.1:8090/showdown/websocket",
@@ -69,7 +76,9 @@ class Settings(BaseSettings):
         alias="ENGINE_FULL_BATTLE_TIMEOUT_SECONDS",
         default=300.0,
     )
-    engine_max_reject_previews: int = Field(alias="ENGINE_MAX_REJECT_PREVIEWS", default=500)
+    engine_max_reject_previews: int = Field(
+        alias="ENGINE_MAX_REJECT_PREVIEWS", default=500
+    )
     regulation_showdown_map: str = Field(
         alias="REGULATION_SHOWDOWN_MAP",
         default='{"M-B":"gen9championsvgc2026regmb","M-A":"gen9championsvgc2026regma"}',
@@ -84,7 +93,11 @@ class Settings(BaseSettings):
     deepinfra_api_key: SecretStr | None = Field(alias="DEEPINFRA_API_KEY", default=None)
 
     def analysis_regulation_list(self) -> list[str]:
-        return [part.strip() for part in self.analysis_regulations.split(",") if part.strip()]
+        return [
+            part.strip()
+            for part in self.analysis_regulations.split(",")
+            if part.strip()
+        ]
 
     def analysis_regulation_default(self) -> str:
         values = self.analysis_regulation_list()
@@ -123,7 +136,11 @@ class Settings(BaseSettings):
     def synthesis_source_token_budget(self, prompt_overhead_tokens: int = 512) -> int:
         if self.llm_input_token_budget <= 0:
             raise ValueError("LLM_INPUT_TOKEN_BUDGET must be positive")
-        available = self.llm_input_token_budget - self.synthesis_output_token_limit() - prompt_overhead_tokens
+        available = (
+            self.llm_input_token_budget
+            - self.synthesis_output_token_limit()
+            - prompt_overhead_tokens
+        )
         if available <= 0:
             raise ValueError("LLM_INPUT_TOKEN_BUDGET too small for synthesis")
         return available
@@ -159,6 +176,11 @@ class Settings(BaseSettings):
         import sys
 
         return sys.executable
+
+    def vgc_engine_configured(self) -> bool:
+        if self.vgc_model_profile:
+            return True
+        return bool(self.vgc_checkpoint_path)
 
     @property
     def vgc_bridge_argv(self) -> list[str] | None:

@@ -16,6 +16,7 @@
         "mkdir -p engine-runtime/vendor",
         "if [ ! -d engine-runtime/vendor/vgc-bench/.git ]; then git clone --recurse-submodules https://github.com/cameronangliss/vgc-bench.git engine-runtime/vendor/vgc-bench; fi",
         "git -C engine-runtime/vendor/vgc-bench fetch origin d79f9532947ac114dce1dda2456a590afcd375b2 && git -C engine-runtime/vendor/vgc-bench checkout --detach d79f9532947ac114dce1dda2456a590afcd375b2 && git -C engine-runtime/vendor/vgc-bench submodule update --init --recursive",
+        "cp engine-runtime/patches/vgc_bench_src_policy.py engine-runtime/vendor/vgc-bench/vgc_bench/src/policy.py",
         "cd engine-runtime && uv sync --group tools && uv pip install -e . && uv pip install -e vendor/vgc-bench"
       ],
       "engine-fetch-checkpoint": [

@@ -1,0 +1,5 @@
+{
+  "observation_shape": [7, 6936],
+  "mask_shape": [7, 214],
+  "source": "dataset inspect mb-002 step 0"
+}

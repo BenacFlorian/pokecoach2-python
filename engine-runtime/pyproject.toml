@@ -5,6 +5,7 @@ description = "Isolated VGC-Bench / Showdown bridge for PokeCoach"
 requires-python = ">=3.10"
 dependencies = [
     "websockets>=14.0",
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]

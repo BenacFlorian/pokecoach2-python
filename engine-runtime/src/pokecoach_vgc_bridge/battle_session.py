@@ -255,8 +255,17 @@ async def create_policy_pair(
         accept_open_team_sheet=accept_ots,
     )
     device = deps["torch"].device("cpu")
-    p1.set_policy(checkpoint_path, device)
-    p2.set_policy(checkpoint_path, device)
+    from pokecoach_vgc_bridge.model_profile import load_vgc_model_profile_from_env
+
+    profile = load_vgc_model_profile_from_env()
+    if profile is not None:
+        from pokecoach_vgc_bridge.policy_factory import attach_policy_to_player
+
+        attach_policy_to_player(p1, profile, device_str=str(device))
+        attach_policy_to_player(p2, profile, device_str=str(device))
+    else:
+        p1.set_policy(checkpoint_path, device)
+        p2.set_policy(checkpoint_path, device)
     p1.pokecoach_imposed_four = (
         _validate_imposed_four(our_imposed_four) if our_imposed_four is not None else None
     )
