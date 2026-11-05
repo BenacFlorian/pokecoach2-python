@@ -211,5 +211,9 @@ def _format_for_reg(payload: dict[str, Any], reg_key: str) -> str:
                 return str(fmt)
         except ValueError:
             continue
-    defaults = {"mb": "gen9championsvgc2026regmb", "ma": "gen9championsvgc2026regma"}
+    defaults = {
+        "mb": "gen9championsvgc2026regmb",
+        "ma": "gen9championsvgc2026regma",
+        "mc": "gen9championsvgc2026regmc",
+    }
     return defaults.get(reg_key, reg_key)

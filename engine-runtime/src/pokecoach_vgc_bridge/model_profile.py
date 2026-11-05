@@ -86,8 +86,34 @@ def _resolve_path(base_dir: Path, raw: str | None) -> Path | None:
     return p
 
 
-def _architecture_from_mapping(data: dict[str, Any] | None) -> ModelArchitecture:
+_ARCHITECTURE_KEYS = (
+    "d_model",
+    "num_layers",
+    "num_heads",
+    "embed_len",
+    "choose_on_teampreview",
+)
+
+
+def _architecture_from_mapping(
+    data: dict[str, Any] | None,
+    *,
+    strict: bool = False,
+) -> ModelArchitecture:
     data = data or {}
+    if strict:
+        missing = [k for k in _ARCHITECTURE_KEYS if k not in data]
+        if missing:
+            raise ModelProfileError(
+                f"architecture Trainer incomplète (champs manquants: {', '.join(missing)})"
+            )
+        return ModelArchitecture(
+            d_model=int(data["d_model"]),
+            num_layers=int(data["num_layers"]),
+            num_heads=int(data["num_heads"]),
+            embed_len=int(data["embed_len"]),
+            choose_on_teampreview=bool(data["choose_on_teampreview"]),
+        )
     return ModelArchitecture(
         d_model=int(data.get("d_model", 128)),
         num_layers=int(data.get("num_layers", 2)),
@@ -105,9 +131,23 @@ def _load_trainer_package(package_dir: Path) -> tuple[Path, ModelArchitecture, s
     if not model_zip.is_file():
         raise ModelProfileError(f"model.zip absent: {model_zip}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    arch_raw = manifest.get("architecture") or {}
-    architecture = _architecture_from_mapping(arch_raw)
+    schema_version = int(manifest.get("schema_version") or 1)
+    if schema_version > 2:
+        raise ModelProfileError(f"schema_version manifest non supportée: {schema_version}")
+    strict = schema_version >= 2
+    arch_raw = manifest.get("architecture")
+    if not isinstance(arch_raw, dict):
+        raise ModelProfileError("architecture manifest absente ou invalide")
+    architecture = _architecture_from_mapping(arch_raw, strict=strict)
     sha = manifest.get("checkpoint_sha256")
+    if strict:
+        if not sha or not str(sha).strip():
+            raise ModelProfileError("checkpoint_sha256 requis pour un package Trainer v2")
+        sha = str(sha).strip().lower()
+    elif sha is not None and str(sha).strip():
+        sha = str(sha).strip().lower()
+    else:
+        sha = None
     model_id = str(manifest.get("model_id") or package_dir.parent.name)
     return model_zip.resolve(), architecture, sha, model_id
 
@@ -154,7 +194,10 @@ def load_vgc_model_profile(path: Path) -> VgcModelProfile:
         checkpoint_path = _resolve_path(base_dir, str(ckpt_raw))
         if checkpoint_path is None or not checkpoint_path.is_file():
             raise ModelProfileError(f"checkpoint introuvable: {ckpt_raw}")
-        architecture = _architecture_from_mapping(arch_block if isinstance(arch_block, dict) else {})
+        architecture = _architecture_from_mapping(
+            arch_block if isinstance(arch_block, dict) else {},
+            strict=False,
+        )
         sha_val = checkpoint_block.get("sha256")
         if sha_val is not None and str(sha_val).strip().lower() not in ("null", "none", ""):
             sha256 = str(sha_val).strip().lower()

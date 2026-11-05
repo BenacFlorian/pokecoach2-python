@@ -81,7 +81,7 @@ class Settings(BaseSettings):
     )
     regulation_showdown_map: str = Field(
         alias="REGULATION_SHOWDOWN_MAP",
-        default='{"M-B":"gen9championsvgc2026regmb","M-A":"gen9championsvgc2026regma"}',
+        default='{"M-B":"gen9championsvgc2026regmb","M-A":"gen9championsvgc2026regma","M-C":"gen9championsvgc2026regmc"}',
     )
     llm_model: str = Field(
         alias="LLM_MODEL",

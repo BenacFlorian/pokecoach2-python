@@ -1,0 +1,15 @@
+# Exemple de profil PokeCoach pour un package Trainer M-C (schema_version 2).
+# Copier vers un chemin local (hors Git) et définir VGC_MODEL_PROFILE.
+
+model_id: mc-v1-example
+
+# Répertoire extrait ou copié depuis le téléchargement Trainer
+# (contient model.zip, manifest.json, metrics.jsonl, …)
+trainer_package_dir: ../storage/models/<MODEL_ID>/package
+
+inference:
+  device: auto
+  deterministic: true
+
+# Ne pas mélanger avec checkpoint.path ou architecture explicite
+# lorsque trainer_package_dir est défini.
