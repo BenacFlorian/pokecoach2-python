@@ -16,6 +16,15 @@ def test_settings_analysis_regulation_list_includes_mc_by_default() -> None:
     assert settings.analysis_regulation_list() == ["M-B", "M-A", "M-C"]
 
 
+def test_settings_analysis_regulation_default_prefers_mc() -> None:
+    settings = Settings(
+        _env_file=None,
+        POSTGRES_PASSWORD="secret",
+        ANALYSIS_DEFAULT_REGULATION="M-C",
+    )
+    assert settings.analysis_regulation_default() == "M-C"
+
+
 def test_canonical_regulation_allowed() -> None:
     assert canonical_regulation_allowed("M-C", ["M-B", "M-A", "M-C"])
     assert not canonical_regulation_allowed("M-C", ["M-B"])

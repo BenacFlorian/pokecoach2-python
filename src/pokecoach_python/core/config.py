@@ -33,6 +33,10 @@ class Settings(BaseSettings):
         alias="ANALYSIS_REGULATIONS",
         default="M-B,M-A,M-C",
     )
+    analysis_default_regulation: str = Field(
+        alias="ANALYSIS_DEFAULT_REGULATION",
+        default="M-C",
+    )
     analysis_deployed_phases: str = Field(
         alias="ANALYSIS_DEPLOYED_PHASES",
         default="A,C,B,D,synthesis",
@@ -106,9 +110,17 @@ class Settings(BaseSettings):
         return seen
 
     def analysis_regulation_default(self) -> str:
+        from pokecoach_python.core.regulations import (
+            canonical_regulation_allowed,
+            canonical_regulation_label,
+        )
+
         values = self.analysis_regulation_list()
         if not values:
             raise ValueError("ANALYSIS_REGULATIONS must not be empty")
+        preferred = canonical_regulation_label(self.analysis_default_regulation)
+        if canonical_regulation_allowed(preferred, values):
+            return preferred
         return values[0]
 
     def analysis_deployed_phase_list(self) -> list[str]:
