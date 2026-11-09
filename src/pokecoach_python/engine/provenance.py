@@ -4,10 +4,45 @@ from __future__ import annotations
 
 from typing import Any
 
+from pokecoach_python.core.config import Settings
 from pokecoach_python.engine.contracts import BattleRecord
 from pokecoach_python.engine.errors import EngineBridgeError
 
 NORMALIZER_VERSION = 1
+
+
+def _checkpoint_fingerprint_without_bridge(settings: Settings) -> str | None:
+    if settings.vgc_checkpoint_sha256:
+        return settings.vgc_checkpoint_sha256.strip().lower()[:16]
+    if not settings.vgc_model_profile:
+        return None
+    try:
+        from pokecoach_vgc_bridge.model_profile import load_vgc_model_profile_from_env
+
+        profile = load_vgc_model_profile_from_env()
+    except Exception:
+        return None
+    if profile is None or not profile.checkpoint_sha256:
+        return None
+    return profile.checkpoint_sha256.strip().lower()[:16]
+
+
+def provenance_for_worker_compat(settings: Settings) -> dict[str, Any]:
+    """Vérifie la config courante sans lancer le subprocess bridge (pas de double hello)."""
+    hello: dict[str, Any] | None = None
+    if settings.engine_mode.lower() == "vgc_bench" and settings.vgc_engine_configured():
+        fp = _checkpoint_fingerprint_without_bridge(settings)
+        hello = {
+            "engine": "vgc-bench",
+            "checkpointLoaded": True,
+            "checkpointFingerprint": fp,
+        }
+    return build_run_provenance(
+        engine_mode=settings.engine_mode,
+        product_phases=settings.analysis_deployed_phase_list(),
+        hello=hello,
+        checkpoint_id=settings.analysis_checkpoint_id,
+    )
 
 
 def build_run_provenance(

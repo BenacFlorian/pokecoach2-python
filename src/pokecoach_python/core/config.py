@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     enable_demo_seed: bool = Field(alias="ENABLE_DEMO_SEED", default=False)
     analysis_regulations: str = Field(
         alias="ANALYSIS_REGULATIONS",
-        default="M-B",
+        default="M-B,M-A,M-C",
     )
     analysis_deployed_phases: str = Field(
         alias="ANALYSIS_DEPLOYED_PHASES",
@@ -93,11 +93,17 @@ class Settings(BaseSettings):
     deepinfra_api_key: SecretStr | None = Field(alias="DEEPINFRA_API_KEY", default=None)
 
     def analysis_regulation_list(self) -> list[str]:
-        return [
-            part.strip()
-            for part in self.analysis_regulations.split(",")
-            if part.strip()
-        ]
+        from pokecoach_python.core.regulations import canonical_regulation_label
+
+        seen: list[str] = []
+        for part in self.analysis_regulations.split(","):
+            label = part.strip()
+            if not label:
+                continue
+            canon = canonical_regulation_label(label)
+            if canon not in seen:
+                seen.append(canon)
+        return seen
 
     def analysis_regulation_default(self) -> str:
         values = self.analysis_regulation_list()
@@ -155,7 +161,10 @@ class Settings(BaseSettings):
             raise ValueError("REGULATION_SHOWDOWN_MAP must be valid JSON") from exc
         if not isinstance(mapping, dict):
             raise ValueError("REGULATION_SHOWDOWN_MAP must be a JSON object")
-        fmt = mapping.get(regulation)
+        from pokecoach_python.core.regulations import canonical_regulation_label
+
+        key = canonical_regulation_label(regulation)
+        fmt = mapping.get(key) or mapping.get(regulation)
         if not isinstance(fmt, str) or not fmt:
             raise ValueError(f"no Showdown format mapped for regulation {regulation!r}")
         return fmt
@@ -181,6 +190,10 @@ class Settings(BaseSettings):
         if self.vgc_model_profile:
             return True
         return bool(self.vgc_checkpoint_path)
+
+    def bridge_timeout_for_preview(self) -> float:
+        """Délai JSONL bridge : preview Showdown + chargement BC au premier appel."""
+        return self.analysis_preview_timeout_seconds + self.engine_startup_timeout_seconds
 
     @property
     def vgc_bridge_argv(self) -> list[str] | None:

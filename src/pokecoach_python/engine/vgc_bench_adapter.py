@@ -84,7 +84,7 @@ class VgcBenchEngineAdapter(EngineAdapter):
         raw = self._client.request(
             "preview",
             payload,
-            timeout_seconds=request.timeout_seconds,
+            timeout_seconds=self._settings.bridge_timeout_for_preview(),
         )
         opp = raw["opponentLeadSlots"]
         our_raw = raw.get("ourLeadSlots")

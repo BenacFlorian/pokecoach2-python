@@ -82,7 +82,7 @@ async def _run_policy_preview_battle(
         regulation=regulation,
         seed=seed,
     )
-    timeout = float(os.environ.get("POKECOACH_ENGINE_PREVIEW_LIFECYCLE_TIMEOUT", "30"))
+    timeout = float(os.environ.get("POKECOACH_ENGINE_PREVIEW_LIFECYCLE_TIMEOUT", "90"))
     our_lead, opp_lead = await _await_preview_selection(
         p1,
         p2,

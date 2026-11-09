@@ -116,6 +116,19 @@ def test_bridge_close_terminates_process(fixture_env):
     assert proc.poll() is not None
 
 
+def test_subprocess_env_propagates_lifecycle_timeouts():
+    settings = Settings(
+        POSTGRES_PASSWORD="test",
+        ANALYSIS_PREVIEW_TIMEOUT_SECONDS=99,
+        ENGINE_FIRST_TURN_TIMEOUT_SECONDS=88,
+        ENGINE_MAX_REJECT_PREVIEWS=42,
+    )
+    env = VgcSubprocessClient._default_env(settings)
+    assert float(env["POKECOACH_ENGINE_PREVIEW_LIFECYCLE_TIMEOUT"]) == 99
+    assert float(env["POKECOACH_ENGINE_FIRST_TURN_LIFECYCLE_TIMEOUT"]) == 88
+    assert env["POKECOACH_ENGINE_MAX_REJECT_PREVIEWS"] == "42"
+
+
 def test_bridge_request_timeout_does_not_wait_for_blocked_reader():
     settings = Settings(POSTGRES_PASSWORD="test")
     client = VgcSubprocessClient(

@@ -68,6 +68,13 @@ class VgcSubprocessClient:
         env = os.environ.copy()
         env["POKECOACH_SHOWDOWN_SERVER"] = settings.showdown_server_url
         env["POKECOACH_REGULATION_MAP"] = settings.regulation_showdown_map_json()
+        env["POKECOACH_ENGINE_PREVIEW_LIFECYCLE_TIMEOUT"] = str(
+            settings.analysis_preview_timeout_seconds
+        )
+        env["POKECOACH_ENGINE_FIRST_TURN_LIFECYCLE_TIMEOUT"] = str(
+            settings.engine_first_turn_timeout_seconds
+        )
+        env["POKECOACH_ENGINE_MAX_REJECT_PREVIEWS"] = str(settings.engine_max_reject_previews)
         if os.environ.get("POKECOACH_BRIDGE_FIXTURE") == "1":
             env["POKECOACH_BRIDGE_FIXTURE"] = "1"
         if settings.vgc_model_profile:

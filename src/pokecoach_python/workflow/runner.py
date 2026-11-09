@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import logging
 import time
+from threading import Event
 
-from pokecoach_python.db.analysis_repository import AnalysisRepository, ClaimedRun, _initial_provenance
+from pokecoach_python.core.analysis_errors import RunExecutionStopped
+from pokecoach_python.db.analysis_repository import AnalysisRepository, ClaimedRun
 from pokecoach_python.engine.contracts import BattleRecord
 from pokecoach_python.engine.factory import build_engine_adapter
+from pokecoach_python.engine.provenance import (
+    assert_run_engine_compatible,
+    provenance_for_worker_compat,
+)
 from pokecoach_python.engine.seeds import run_base_seed
-from pokecoach_python.engine.provenance import assert_run_engine_compatible
 from pokecoach_python.schemas.analysis_result import Phase
 from pokecoach_python.workflow.registry import handler_for, phase_order
 from pokecoach_python.workflow.types import PhaseContext
@@ -80,22 +85,37 @@ class WorkflowRunner:
         self._repo = repo
         self._settings = settings
 
-    def run_claimed(self, claim: ClaimedRun) -> None:
+    def run_claimed(self, claim: ClaimedRun, *, stop_event: Event | None = None) -> None:
         row = claim.context_row
         run_id = row.id
         token = claim.lease_token
+
+        def ensure_active() -> None:
+            if stop_event is not None and stop_event.is_set():
+                raise RunExecutionStopped("supervisor_stop", run_id=run_id)
+            self._repo.ensure_run_active(run_id, token)
+
         completed = list(row.partial_result.get("completedPhases") or [])
         pending = _phases_to_run(completed, row.target_phase)
         requires_engine = any(phase != "synthesis" for phase in pending)
-        if requires_engine:
-            assert_run_engine_compatible(row.provenance, _initial_provenance(self._settings))
-            engine = build_engine_adapter(self._settings)
-        else:
-            engine = _ForbiddenEngine()
+        engine = None
         try:
+            ensure_active()
             if not pending:
-                logger.info("run %s: nothing to do (target=%s completed=%s)", run_id, row.target_phase, completed)
+                logger.info(
+                    "run %s: nothing to do (target=%s completed=%s)",
+                    run_id,
+                    row.target_phase,
+                    completed,
+                )
                 return
+            if requires_engine:
+                assert_run_engine_compatible(
+                    row.provenance, provenance_for_worker_compat(self._settings)
+                )
+                engine = build_engine_adapter(self._settings)
+            else:
+                engine = _ForbiddenEngine()
             logger.info(
                 "run %s: phases %s (target=%s profile=%s)",
                 run_id,
@@ -109,14 +129,14 @@ class WorkflowRunner:
             run_started = time.perf_counter()
 
             def progress(phase: str, done: int, total: int) -> None:
+                ensure_active()
                 if not self._repo.update_progress(
                     run_id, token, phase=phase, completed=done, total=total
                 ):
-                    raise RuntimeError("lost lease during progress")
-                if self._repo.is_cancelled(run_id):
-                    raise RuntimeError("run cancelled")
+                    raise RunExecutionStopped("lease_lost", run_id=run_id)
 
             for index, phase in enumerate(pending):
+                ensure_active()
                 completed = list(accumulated_partial.get("completedPhases") or [])
                 remaining = pending[index + 1 :]
                 phase_started = time.perf_counter()
@@ -131,6 +151,7 @@ class WorkflowRunner:
                     if not completed:
                         raise RuntimeError(f"phase {phase} not implemented")
                     logger.info("run %s: pausing — phase %s not implemented", run_id, phase)
+                    ensure_active()
                     self._repo.pause_for_implementation(run_id, token)
                     break
                 battle_phase = phase if phase in ("C", "D") else None
@@ -139,6 +160,7 @@ class WorkflowRunner:
                 def _insert_battle(rec: BattleRecord, key: str, bp=battle_phase) -> str:
                     if bp not in ("C", "D"):
                         raise RuntimeError("battles only supported for phases C and D")
+                    ensure_active()
                     return str(
                         self._repo.insert_battle(
                             run_id,
@@ -189,8 +211,10 @@ class WorkflowRunner:
                     result_revision=row.result_revision,
                     settings=self._settings,
                     analysis_repository=self._repo,
+                    ensure_active=ensure_active,
                 )
                 output = handler(ctx)
+                ensure_active()
                 phase_duration_ms = int((time.perf_counter() - phase_started) * 1000)
                 logger.info(
                     "run %s: phase %s done durationMs=%d (pause=%s defer=%s)",
@@ -212,6 +236,7 @@ class WorkflowRunner:
                     continue
                 pause = _should_pause_after_phase(output.phase, row.target_phase, remaining)
                 payload = output.result.model_dump(mode="json")
+                ensure_active()
                 if output.phase == "synthesis":
                     metadata_patch = (
                         output.metadata_patch
@@ -237,11 +262,14 @@ class WorkflowRunner:
                 accumulated_partial = payload
                 row = self._repo.load_run_row(run_id)
                 if row is None:
-                    raise RuntimeError("run missing after publish")
+                    raise RunExecutionStopped("missing_run", run_id=run_id)
                 if pause:
                     break
+        except RunExecutionStopped as stopped:
+            logger.info("run %s execution stopped (%s)", run_id, stopped.reason)
         except Exception as exc:
             logger.exception("run %s failed: %s", run_id, exc)
             self._repo.fail_run(run_id, token, str(exc))
         finally:
-            engine.close()
+            if engine is not None:
+                engine.close()

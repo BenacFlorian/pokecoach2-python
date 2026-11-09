@@ -6,6 +6,7 @@ import hashlib
 import json
 from typing import Any
 
+from pokecoach_python.core.analysis_errors import RunExecutionStopped
 from pokecoach_python.engine.contracts import BattleRecord, SimulationRequest
 from pokecoach_python.schemas.analysis_result import (
     OpponentLeadsSection,
@@ -92,6 +93,7 @@ def run_phase_c(context: PhaseContext) -> PhaseOutput:
 
         while valid_count < budget and attempts < per_lead_cap:
             attempts += 1
+            context.ensure_active()
             attempts_total += 1
             req = SimulationRequest(
                 our_snapshot=context.our_snapshot,
@@ -114,6 +116,8 @@ def run_phase_c(context: PhaseContext) -> PhaseOutput:
                 sample_index += 1
                 done_global += 1
                 context.report_progress("C", done_global, total_target)
+            except RunExecutionStopped:
+                raise
             except ValueError:
                 rejects_total += 1
             except Exception as exc:

@@ -9,6 +9,7 @@ import os
 from collections import Counter
 from typing import Any
 
+from pokecoach_python.core.analysis_errors import RunExecutionStopped
 from pokecoach_python.engine.contracts import SimulationRequest, TurnOneRecord
 from pokecoach_python.engine.errors import EngineBridgeError
 from pokecoach_python.engine.seeds import phase_attempt_seed
@@ -131,6 +132,7 @@ def run_phase_b(context: PhaseContext) -> PhaseOutput:
         while len(valid) < budget and attempts < per_lead_cap:
             attempts += 1
             attempts_total += 1
+            context.ensure_active()
             req = SimulationRequest(
                 our_snapshot=context.our_snapshot,
                 opponent_snapshot=context.opponent_snapshot,
@@ -173,6 +175,8 @@ def run_phase_b(context: PhaseContext) -> PhaseOutput:
                 valid.append(record)
                 done_global += 1
                 context.report_progress("B", done_global, total_target)
+            except RunExecutionStopped:
+                raise
             except ValueError as exc:
                 rejects += 1
                 rejects_total += 1

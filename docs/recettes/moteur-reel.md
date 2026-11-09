@@ -4,7 +4,7 @@
 
 1. `devbox run engine-setup` — venv isolé dans `engine-runtime/`.
 2. Télécharger le checkpoint BC amont, renseigner `VGC_CHECKPOINT_PATH` et `VGC_CHECKPOINT_SHA256` (voir `engine-runtime/manifest.json`).
-3. Showdown local sur le port configuré (`SHOWDOWN_SERVER_URL`, par défaut 8090).
+3. Showdown local sur le port configuré (`SHOWDOWN_SERVER_URL`, par défaut 8090). **Utiliser le clone à la racine du monorepo** (`../../pokemon-showdown` depuis `pokecoach2-python/`), pas le sous-module vendu sous `engine-runtime/vendor/…` : sur Node récent, `node pokemon-showdown start` y échoue souvent (`npm ci` sans `package-lock.json` valide).
 4. `POKECOACH_ENGINE=vgc_bench` dans `.env` (jamais committer les poids).
 
 ## Diagnostic
@@ -14,8 +14,8 @@ devbox run engine-setup
 devbox run engine-fetch-checkpoint
 # Copier dans .env les lignes VGC_CHECKPOINT_PATH et VGC_CHECKPOINT_SHA256 affichées
 
-# Showdown local (depuis clone vgc-bench/pokemon-showdown, port 8090)
-# node pokemon-showdown start 8090 --no-security
+# Showdown local (clone repo racine pokecoach2/pokemon-showdown, port 8090)
+cd ../pokemon-showdown && node pokemon-showdown start 8090 --no-security
 
 uv run python -m pokecoach_python.engine.check \
   --our-team tests/fixtures/engine-real/mb-regmb-our.json \

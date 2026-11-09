@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from hashlib import sha256
 from typing import Any
 
 from langchain_core.messages import BaseMessage
 
+from pokecoach_python.core.analysis_errors import RunExecutionStopped
 from pokecoach_python.core.config import Settings
 from pokecoach_python.graphs.matchup_gameplan.models import PreparedSources, StrategyOutput
 
@@ -19,9 +20,11 @@ class StrategyClient:
         settings: Settings,
         *,
         chat_factory: Any | None = None,
+        ensure_active: Callable[[], None] | None = None,
     ) -> None:
         self._settings = settings
         self._chat_factory = chat_factory
+        self._ensure_active = ensure_active or (lambda: None)
         self.last_invocation: dict[str, Any] | None = None
 
     def generate(
@@ -41,8 +44,10 @@ class StrategyClient:
         attempts = 0
         while True:
             attempts += 1
+            self._ensure_active()
             try:
                 response = llm.invoke(list(messages))
+                self._ensure_active()
                 strategy = (
                     response
                     if isinstance(response, StrategyOutput)
@@ -58,9 +63,12 @@ class StrategyClient:
                     "tokens": _usage_metadata(response),
                 }
                 return strategy
+            except RunExecutionStopped:
+                raise
             except Exception as exc:
                 if attempts >= 2 or not _is_transient_error(exc):
                     raise
+                self._ensure_active()
 
     def _build_llm(self, api_key: str) -> Any:
         chat_factory = self._chat_factory

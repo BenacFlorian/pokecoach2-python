@@ -36,7 +36,10 @@ def run_phase_e(context: PhaseContext) -> PhaseOutput:
         raise RuntimeError("phase E requires identified D battles")
     settings = context.settings
     store = context.synthesis_store or MatchupGameplanStore(context.analysis_repository)
-    client = context.synthesis_client or StrategyClient(settings)
+    client = context.synthesis_client or StrategyClient(
+        settings,
+        ensure_active=context.ensure_active,
+    )
     context.report_progress("synthesis", 0, 1)
     stored = list(context.list_d_battles())
     expected_ids = list(checkpoint.refinement.battleIds) if checkpoint.refinement else []
@@ -82,6 +85,7 @@ def run_phase_e(context: PhaseContext) -> PhaseOutput:
     execution_id = f"synthesis-{uuid.uuid4()}"
     output_locale = parse_output_locale(context.parameters.get("locale"))
     graph_started = time.perf_counter()
+    context.ensure_active()
     strategy = invoke_matchup_gameplan(
         run_id=context.run_id,
         sources_hash=prepared.sourceHash,
@@ -90,6 +94,7 @@ def run_phase_e(context: PhaseContext) -> PhaseOutput:
         client=client,
         output_locale=output_locale,
     )
+    context.ensure_active()
     graph_invoke_ms = int((time.perf_counter() - graph_started) * 1000)
     validate_started = time.perf_counter()
     validate_strategy_reference_tokens(strategy, our_four=our_four)  # type: ignore[arg-type]

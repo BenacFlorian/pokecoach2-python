@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 
+from pokecoach_python.core.analysis_errors import RunExecutionStopped
 from pokecoach_python.engine.contracts import PreviewRecord, SimulationRequest
 from pokecoach_python.schemas.analysis_result import SimulationResultV2
 from pokecoach_python.workflow.aggregation.leads import aggregate_leads
 from pokecoach_python.workflow.budgets import max_attempts, phase_a_valid_budget
 from pokecoach_python.workflow.types import PhaseContext, PhaseOutput
+
+logger = logging.getLogger(__name__)
 
 
 def _attempt_seed(run_seed: int, attempt: int) -> int:
@@ -29,6 +33,16 @@ def run_phase_a(context: PhaseContext) -> PhaseOutput:
 
     while len(valid) < budget and attempts < attempt_cap:
         attempts += 1
+        context.ensure_active()
+        bridge_timeout = context.settings.bridge_timeout_for_preview()
+        logger.info(
+            "run %s: phase A preview attempt %s/%s (lifecycle=%ss bridge=%ss)",
+            context.run_id,
+            attempts,
+            attempt_cap,
+            context.preview_timeout_seconds,
+            bridge_timeout,
+        )
         req = SimulationRequest(
             our_snapshot=context.our_snapshot,
             opponent_snapshot=context.opponent_snapshot,
@@ -41,14 +55,14 @@ def run_phase_a(context: PhaseContext) -> PhaseOutput:
             record = context.engine.preview(req)
             valid.append(record)
             context.report_progress("A", len(valid), budget)
+        except RunExecutionStopped:
+            raise
         except ValueError:
             rejects += 1
         except Exception as exc:
             errors += 1
             if errors <= 3:
-                import logging
-
-                logging.getLogger(__name__).warning(
+                logger.warning(
                     "phase A preview attempt %s failed: %s: %s",
                     attempts,
                     type(exc).__name__,

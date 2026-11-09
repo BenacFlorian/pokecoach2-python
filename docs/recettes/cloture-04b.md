@@ -28,7 +28,7 @@ Ne **pas** définir `POKECOACH_BRIDGE_FIXTURE=1` sur worker/API (réservé CI).
 
 **Worker / API** : après changement de `.env`, redémarrer **API** (`devbox run start`) et **worker** (`devbox run worker`). Au démarrage d’un run, le worker logue `POKECOACH_ENGINE=…`. Vérifier `vgc_bench` + chemin checkpoint. Sans redémarrage, un worker lancé en stub peut continuer à simuler en stub malgré un `.env` à jour.
 
-Showdown : `node pokemon-showdown start 8090 --no-security` (depuis le clone vendu `engine-runtime/vendor/vgc-bench/pokemon-showdown`).
+Showdown : serveur **séparé** — le worker/API ne le démarrent pas ; ils se connectent à `SHOWDOWN_SERVER_URL`. Lancer depuis le clone **`pokecoach2/pokemon-showdown`** (recommandé) : `node pokemon-showdown start 8090 --no-security`. Éviter le clone vendu sous `engine-runtime/vendor/vgc-bench/pokemon-showdown` pour le serveur (souvent cassé au `npm ci`).
 
 ## Preuves automatisées (obligatoires)
 

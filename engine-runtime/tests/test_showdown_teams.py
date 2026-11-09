@@ -4,6 +4,9 @@ from pokecoach_vgc_bridge.battle_session import _static_builder
 
 def test_regulation_map():
     assert pokecoach_regulation_to_vgc_reg("M-B") == "mb"
+    assert pokecoach_regulation_to_vgc_reg("M-A") == "ma"
+    assert pokecoach_regulation_to_vgc_reg("M-C") == "mc"
+    assert pokecoach_regulation_to_vgc_reg("MC") == "mc"
 
 
 def test_snapshot_raw_blocks():

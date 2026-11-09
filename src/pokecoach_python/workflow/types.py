@@ -14,6 +14,10 @@ from pokecoach_python.schemas.analysis_result import Phase, SimulationResultV2
 ProgressCallback = Callable[[str, int, int], None]
 
 
+def _noop_ensure_active() -> None:
+    return None
+
+
 @dataclass
 class PhaseContext:
     run_id: uuid.UUID
@@ -42,6 +46,7 @@ class PhaseContext:
     analysis_repository: Any = None
     synthesis_client: Any = None
     synthesis_store: Any = None
+    ensure_active: Callable[[], None] = _noop_ensure_active
 
 
 @dataclass(frozen=True)

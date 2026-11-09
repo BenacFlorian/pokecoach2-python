@@ -11,14 +11,22 @@ from typing import Any, Literal
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import DBAPIError
 from sqlmodel import Session
 
+from pokecoach_python.core.analysis_errors import (
+    AnalysisTargetNotFound,
+    RunExecutionStopped,
+)
 from pokecoach_python.core.config import Settings
+from pokecoach_python.core.regulations import (
+    canonical_regulation_allowed,
+    canonical_regulation_label,
+)
 from pokecoach_python.engine.contracts import BattleRecord
 from pokecoach_python.engine.factory import build_engine_adapter
 from pokecoach_python.llm.battle_sources import StoredDBattle
 from pokecoach_python.schemas.analysis_result import Phase
-from pokecoach_python.workflow.registry import phase_order
 from pokecoach_python.workflow.battle_records import (
     BATTLE_FORMAT_VERSION,
     battle_payload_dict,
@@ -26,11 +34,17 @@ from pokecoach_python.workflow.battle_records import (
     battle_record_from_payload,
     validate_terminal_battle,
 )
+from pokecoach_python.workflow.registry import phase_order
 
 logger = logging.getLogger(__name__)
 
 Operation = Literal["start", "continue", "cancel"]
 LEASE_SECONDS = 60
+
+
+def _pgcode(exc: DBAPIError) -> str | None:
+    orig = getattr(exc, "orig", None)
+    return getattr(orig, "pgcode", None)
 
 
 def _deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
@@ -101,6 +115,39 @@ class AnalysisRepository:
         self._engine = engine
         self._settings = settings
 
+    def ensure_run_active(self, run_id: uuid.UUID, token: uuid.UUID) -> None:
+        with Session(self._engine) as session:
+            active = session.connection().execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM core.matchup_runs
+                    WHERE id = :run_id
+                      AND status = 'running'
+                      AND lease_token = :token
+                      AND lease_expires_at > now()
+                    """
+                ),
+                {"run_id": run_id, "token": token},
+            ).first()
+            if active is not None:
+                return
+            row = session.connection().execute(
+                text(
+                    """
+                    SELECT status
+                    FROM core.matchup_runs
+                    WHERE id = :run_id
+                    """
+                ),
+                {"run_id": run_id},
+            ).first()
+        if row is None:
+            raise RunExecutionStopped("missing_run", run_id=run_id)
+        if row[0] == "cancelled":
+            raise RunExecutionStopped("cancelled", run_id=run_id)
+        raise RunExecutionStopped("lease_lost", run_id=run_id)
+
     def find_command(self, idempotency_key: uuid.UUID) -> StoredCommand | None:
         with Session(self._engine) as session:
             row = session.connection().execute(
@@ -137,7 +184,9 @@ class AnalysisRepository:
                     """
                 ),
                 {"run_id": run_id},
-            ).one()
+            ).first()
+            if row is None:
+                raise AnalysisTargetNotFound("run", run_id)
         process = str(row[4]).replace(" ", "_")
         return {
             "matchupId": str(row[0]),
@@ -159,10 +208,70 @@ class AnalysisRepository:
                           AND NOT is_deleted
                         """
                     ),
-                    {"matchup_id": matchup_id, "regulation": regulation},
+                    {
+                        "matchup_id": matchup_id,
+                        "regulation": canonical_regulation_label(regulation),
+                    },
                 )
                 if updated.rowcount != 1:
                     raise ValueError("matchup not found or archived")
+
+    def resolve_matchup_regulation_for_analysis(
+        self,
+        matchup_id: uuid.UUID,
+        *,
+        allowed_regulations: list[str],
+        default_regulation: str,
+    ) -> str:
+        """Return regulation for the run; set default only when matchup has none."""
+        allowed = [canonical_regulation_label(r) for r in allowed_regulations]
+        default = canonical_regulation_label(default_regulation)
+        if default not in allowed:
+            raise ValueError("default regulation not in allowed list")
+        with Session(self._engine) as session:
+            with session.begin():
+                row = session.connection().execute(
+                    text(
+                        """
+                        SELECT regulation
+                        FROM core.matchups
+                        WHERE id = :matchup_id
+                          AND NOT is_deleted
+                        """
+                    ),
+                    {"matchup_id": matchup_id},
+                ).first()
+                if row is None:
+                    raise ValueError("matchup not found or archived")
+                current = row[0]
+                if current is None or not str(current).strip():
+                    session.connection().execute(
+                        text(
+                            """
+                            UPDATE core.matchups
+                            SET regulation = :regulation
+                            WHERE id = :matchup_id
+                              AND NOT is_deleted
+                            """
+                        ),
+                        {"matchup_id": matchup_id, "regulation": default},
+                    )
+                    return default
+                resolved = canonical_regulation_label(str(current))
+                if not canonical_regulation_allowed(resolved, allowed):
+                    raise ValueError(f"regulation not allowed: {resolved}")
+                if resolved != canonical_regulation_label(str(current)):
+                    session.connection().execute(
+                        text(
+                            """
+                            UPDATE core.matchups
+                            SET regulation = :regulation
+                            WHERE id = :matchup_id
+                            """
+                        ),
+                        {"matchup_id": matchup_id, "regulation": resolved},
+                    )
+                return resolved
 
     def load_matchup_snapshots(
         self, matchup_id: uuid.UUID
@@ -223,57 +332,62 @@ class AnalysisRepository:
         provenance = json.dumps(
             _initial_provenance(self._settings),
         )
-        with Session(self._engine) as session:
-            with session.begin():
-                run_id = session.connection().execute(
-                    text(
-                        """
-                        INSERT INTO core.matchup_runs (
-                          matchup_id,
-                          source,
-                          status,
-                          report_version,
-                          target_phase,
-                          partial_result,
-                          parameters,
-                          provenance
-                        )
-                        VALUES (
-                          :matchup_id,
-                          'simulation',
-                          'queued',
-                          2,
-                          :target_phase,
-                          CAST(:partial_result AS jsonb),
-                          CAST(:parameters AS jsonb),
-                          CAST(:provenance AS jsonb)
-                        )
-                        RETURNING id
-                        """
-                    ),
-                    {
-                        "matchup_id": matchup_id,
-                        "target_phase": target_phase,
-                        "partial_result": empty,
-                        "parameters": parameters,
-                        "provenance": provenance,
-                    },
-                ).scalar_one()
-                session.connection().execute(
-                    text(
-                        """
-                        INSERT INTO core.analysis_commands (
-                          idempotency_key, operation, request_hash, run_id
-                        )
-                        VALUES (:key, 'start', :hash, :run_id)
-                        """
-                    ),
-                    {
-                        "key": idempotency_key,
-                        "hash": request_hash,
-                        "run_id": run_id,
-                    },
-                )
+        try:
+            with Session(self._engine) as session:
+                with session.begin():
+                    run_id = session.connection().execute(
+                        text(
+                            """
+                            INSERT INTO core.matchup_runs (
+                              matchup_id,
+                              source,
+                              status,
+                              report_version,
+                              target_phase,
+                              partial_result,
+                              parameters,
+                              provenance
+                            )
+                            VALUES (
+                              :matchup_id,
+                              'simulation',
+                              'queued',
+                              2,
+                              :target_phase,
+                              CAST(:partial_result AS jsonb),
+                              CAST(:parameters AS jsonb),
+                              CAST(:provenance AS jsonb)
+                            )
+                            RETURNING id
+                            """
+                        ),
+                        {
+                            "matchup_id": matchup_id,
+                            "target_phase": target_phase,
+                            "partial_result": empty,
+                            "parameters": parameters,
+                            "provenance": provenance,
+                        },
+                    ).scalar_one()
+                    session.connection().execute(
+                        text(
+                            """
+                            INSERT INTO core.analysis_commands (
+                              idempotency_key, operation, request_hash, run_id
+                            )
+                            VALUES (:key, 'start', :hash, :run_id)
+                            """
+                        ),
+                        {
+                            "key": idempotency_key,
+                            "hash": request_hash,
+                            "run_id": run_id,
+                        },
+                    )
+        except DBAPIError as exc:
+            if _pgcode(exc) == "P0002":
+                raise AnalysisTargetNotFound("matchup", matchup_id) from exc
+            raise
         return run_id
 
     def record_continue_command(
@@ -296,7 +410,9 @@ class AnalysisRepository:
                         """
                     ),
                     {"run_id": run_id},
-                ).one()
+                ).first()
+                if row is None:
+                    raise AnalysisTargetNotFound("run", run_id)
                 status, old_target, partial = row[0], row[1], row[2]
                 if status != "paused":
                     raise ValueError("run not paused")
@@ -371,7 +487,9 @@ class AnalysisRepository:
                         """
                     ),
                     {"run_id": run_id},
-                ).one()
+                ).first()
+                if row is None:
+                    raise AnalysisTargetNotFound("run", run_id)
                 if row[0] in ("succeeded", "failed", "cancelled"):
                     raise ValueError("run already terminal")
                 session.connection().execute(
@@ -517,20 +635,36 @@ class AnalysisRepository:
         payload_json = json.dumps(payload)
         with Session(self._engine) as session:
             with session.begin():
-                lease_ok = session.connection().execute(
+                locked = session.connection().execute(
                     text(
                         """
-                        SELECT 1 FROM core.matchup_runs
+                        SELECT status, lease_token
+                        FROM core.matchup_runs
                         WHERE id = :run_id
                           AND lease_token = :token
                           AND status = 'running'
                           AND lease_expires_at > now()
+                        FOR UPDATE
                         """
                     ),
                     {"run_id": run_id, "token": token},
                 ).first()
-                if lease_ok is None:
-                    raise RuntimeError("lost lease before battle insert")
+                if locked is None:
+                    exists = session.connection().execute(
+                        text(
+                            """
+                            SELECT status
+                            FROM core.matchup_runs
+                            WHERE id = :run_id
+                            """
+                        ),
+                        {"run_id": run_id},
+                    ).first()
+                    if exists is None:
+                        raise RunExecutionStopped("missing_run", run_id=run_id)
+                    if exists[0] == "cancelled":
+                        raise RunExecutionStopped("cancelled", run_id=run_id)
+                    raise RunExecutionStopped("lease_lost", run_id=run_id)
                 existing = session.connection().execute(
                     text(
                         """
@@ -667,7 +801,21 @@ class AnalysisRepository:
                     },
                 )
                 if updated.rowcount != 1:
-                    raise RuntimeError("lost lease before implementation pause")
+                    row = session.connection().execute(
+                        text(
+                            """
+                            SELECT status
+                            FROM core.matchup_runs
+                            WHERE id = :run_id
+                            """
+                        ),
+                        {"run_id": run_id},
+                    ).first()
+                    if row is None:
+                        raise RunExecutionStopped("missing_run", run_id=run_id)
+                    if row[0] == "cancelled":
+                        raise RunExecutionStopped("cancelled", run_id=run_id)
+                    raise RunExecutionStopped("lease_lost", run_id=run_id)
 
     def publish_phase(
         self,
@@ -704,10 +852,12 @@ class AnalysisRepository:
                         """
                     ),
                     {"run_id": run_id},
-                ).one()
+                ).first()
+                if row is None:
+                    raise RunExecutionStopped("missing_run", run_id=run_id)
                 revision, lease, run_status, execution_metadata = row[0], row[1], row[2], row[3]
                 if run_status != "running" or lease != token:
-                    raise RuntimeError("lease lost before publish")
+                    raise RunExecutionStopped("lease_lost", run_id=run_id)
                 if revision != expected_revision:
                     raise RuntimeError("unexpected result revision")
                 merged_meta = _deep_merge(
@@ -805,10 +955,12 @@ class AnalysisRepository:
                         """
                     ),
                     {"run_id": run_id},
-                ).one()
+                ).first()
+                if row is None:
+                    raise RunExecutionStopped("missing_run", run_id=run_id)
                 status, lease, execution_metadata = row[0], row[1], row[2]
                 if status != "running" or lease != token:
-                    raise RuntimeError("lease lost before deleting synthesis sources")
+                    raise RunExecutionStopped("lease_lost", run_id=run_id)
                 metadata = dict(execution_metadata or {})
                 synthesis = dict(metadata.get("synthesis") or {})
                 if synthesis.get("invocation") is not None:
@@ -850,12 +1002,14 @@ class AnalysisRepository:
                         """
                     ),
                     {"run_id": run_id},
-                ).one()
+                ).first()
+                if row is None:
+                    raise RunExecutionStopped("missing_run", run_id=run_id)
                 revision, lease, status, execution_metadata, lease_expires_at = row
                 if status != "running" or lease != token:
-                    raise RuntimeError("lease lost before final publish")
+                    raise RunExecutionStopped("lease_lost", run_id=run_id)
                 if lease_expires_at is None or lease_expires_at <= datetime.now(UTC):
-                    raise RuntimeError("lease expired before final publish")
+                    raise RunExecutionStopped("lease_lost", run_id=run_id)
                 if revision != expected_revision:
                     raise RuntimeError("unexpected result revision")
                 merged_meta = _deep_merge(dict(execution_metadata or {}), execution_metadata_patch)
@@ -1000,10 +1154,12 @@ class AnalysisRepository:
                         """
                     ),
                     {"run_id": run_id},
-                ).one()
+                ).first()
+                if row is None:
+                    raise RunExecutionStopped("missing_run", run_id=run_id)
                 status, lease, revision, execution_metadata = row
                 if status != "running" or lease != token:
-                    raise RuntimeError("lease lost before writing synthesis sources")
+                    raise RunExecutionStopped("lease_lost", run_id=run_id)
                 if revision != expected_revision:
                     raise RuntimeError("unexpected result revision")
                 metadata = dict(execution_metadata or {})

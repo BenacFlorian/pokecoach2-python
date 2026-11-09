@@ -33,6 +33,8 @@ def pokecoach_regulation_to_vgc_reg(regulation: str) -> str:
         return "mb"
     if normalized in ("M-A", "MA"):
         return "ma"
+    if normalized in ("M-C", "MC"):
+        return "mc"
     if len(normalized) == 2 and normalized.isalpha():
         return normalized.lower()
     raise ValueError(f"unsupported regulation {regulation!r}")

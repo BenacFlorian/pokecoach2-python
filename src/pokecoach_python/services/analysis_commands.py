@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlmodel import Session
 
+from pokecoach_python.core.analysis_errors import AnalysisTargetNotFound
 from pokecoach_python.core.config import Settings
 from pokecoach_python.db.analysis_repository import AnalysisRepository
 from pokecoach_python.engine.capabilities import (
@@ -20,7 +21,6 @@ from pokecoach_python.engine.capabilities import (
     synthesis_available,
 )
 from pokecoach_python.engine.factory import build_engine_adapter
-from pokecoach_python.workflow.registry import phase_order
 from pokecoach_python.schemas.analysis_commands import (
     AnalysisCancelResponse,
     AnalysisCapabilitiesResponse,
@@ -29,6 +29,7 @@ from pokecoach_python.schemas.analysis_commands import (
     AnalysisStartRequest,
     AnalysisStartResponse,
 )
+from pokecoach_python.workflow.registry import phase_order
 
 logger = logging.getLogger(__name__)
 
@@ -211,10 +212,25 @@ def _http_status_for_run(status: str) -> int:
     return 202 if status in ("queued", "running") else 200
 
 
+def _not_found_http(exc: AnalysisTargetNotFound) -> HTTPException:
+    if exc.resource == "matchup":
+        return HTTPException(
+            status_code=404,
+            detail={"code": "MATCHUP_NOT_FOUND", "message": "Matchup introuvable."},
+        )
+    return HTTPException(
+        status_code=404,
+        detail={"code": "RUN_NOT_FOUND", "message": "Analyse introuvable."},
+    )
+
+
 def _response_from_repo(
     repo: AnalysisRepository, run_id: uuid.UUID
 ) -> AnalysisStartResponse:
-    payload = repo.load_run_response(run_id)
+    try:
+        payload = repo.load_run_response(run_id)
+    except AnalysisTargetNotFound as exc:
+        raise _not_found_http(exc) from exc
     return AnalysisStartResponse.model_validate(payload)
 
 
@@ -238,7 +254,10 @@ def start_analysis(
                     "message": "Clé d’idempotence déjà utilisée pour une autre demande.",
                 },
             )
-        response = _response_from_repo(repo, existing.run_id)
+        try:
+            response = _response_from_repo(repo, existing.run_id)
+        except HTTPException:
+            raise
         if response.matchup_id != str(matchup_id):
             raise HTTPException(
                 status_code=409,
@@ -251,10 +270,21 @@ def start_analysis(
 
     matchup = _load_matchup(session, matchup_id)
     try:
-        repo.apply_matchup_regulation(
-            matchup_id, settings.analysis_regulation_default()
+        repo.resolve_matchup_regulation_for_analysis(
+            matchup_id,
+            allowed_regulations=settings.analysis_regulation_list(),
+            default_regulation=settings.analysis_regulation_default(),
         )
     except ValueError as exc:
+        message = str(exc)
+        if "regulation not allowed" in message:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "REGULATION_NOT_SUPPORTED",
+                    "message": "Réglementation du matchup non supportée par le moteur.",
+                },
+            ) from exc
         raise HTTPException(
             status_code=404,
             detail={"code": "MATCHUP_NOT_FOUND", "message": "Matchup introuvable."},
@@ -312,6 +342,8 @@ def start_analysis(
             seed=seed,
             locale=body.locale,
         )
+    except AnalysisTargetNotFound as exc:
+        raise _not_found_http(exc) from exc
     except DBAPIError as exc:
         logger.error("analysis start insert failed: %s", type(exc).__name__)
         raise HTTPException(
@@ -347,9 +379,12 @@ def continue_analysis(
             raise HTTPException(
                 status_code=409, detail={"code": "IDEMPOTENCY_CONFLICT"}
             )
-        response = AnalysisContinueResponse.model_validate(
-            repo.load_run_response(run_id)
-        )
+        try:
+            response = AnalysisContinueResponse.model_validate(
+                repo.load_run_response(run_id)
+            )
+        except AnalysisTargetNotFound as exc:
+            raise _not_found_http(exc) from exc
         return response, _http_status_for_run(response.status)
 
     if body.target_phase not in settings.analysis_deployed_phase_list():
@@ -367,6 +402,8 @@ def continue_analysis(
             run_id=run_id,
             target_phase=body.target_phase,  # type: ignore[arg-type]
         )
+    except AnalysisTargetNotFound as exc:
+        raise _not_found_http(exc) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=409,
@@ -377,7 +414,10 @@ def continue_analysis(
             status_code=503, detail={"code": "DATABASE_UNAVAILABLE"}
         ) from exc
 
-    response = AnalysisContinueResponse.model_validate(repo.load_run_response(run_id))
+    try:
+        response = AnalysisContinueResponse.model_validate(repo.load_run_response(run_id))
+    except AnalysisTargetNotFound as exc:
+        raise _not_found_http(exc) from exc
     return response, 202
 
 
@@ -396,13 +436,18 @@ def cancel_analysis(
             raise HTTPException(
                 status_code=409, detail={"code": "IDEMPOTENCY_CONFLICT"}
             )
-        return AnalysisCancelResponse.model_validate(repo.load_run_response(run_id))
+        try:
+            return AnalysisCancelResponse.model_validate(repo.load_run_response(run_id))
+        except AnalysisTargetNotFound as exc:
+            raise _not_found_http(exc) from exc
     try:
         repo.record_cancel_command(
             idempotency_key=idempotency_key,
             request_hash=fingerprint,
             run_id=run_id,
         )
+    except AnalysisTargetNotFound as exc:
+        raise _not_found_http(exc) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=409,
@@ -412,4 +457,7 @@ def cancel_analysis(
         raise HTTPException(
             status_code=503, detail={"code": "DATABASE_UNAVAILABLE"}
         ) from exc
-    return AnalysisCancelResponse.model_validate(repo.load_run_response(run_id))
+    try:
+        return AnalysisCancelResponse.model_validate(repo.load_run_response(run_id))
+    except AnalysisTargetNotFound as exc:
+        raise _not_found_http(exc) from exc

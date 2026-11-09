@@ -247,6 +247,9 @@ def test_workflow_runner_synthesis_only_skips_engine_build(monkeypatch) -> None:
                 provenance=_real_run_provenance(),
             )
 
+        def ensure_run_active(self, *_args, **_kwargs):
+            return None
+
         def update_progress(self, *_args, **_kwargs):
             return True
 
@@ -280,7 +283,10 @@ def test_workflow_runner_synthesis_only_skips_engine_build(monkeypatch) -> None:
             raise AssertionError("run should not fail")
 
     registry._HANDLERS["synthesis"] = fake_phase_e
-    monkeypatch.setattr("pokecoach_python.workflow.runner._initial_provenance", lambda *_: (_ for _ in ()).throw(AssertionError("no provenance check")))
+    monkeypatch.setattr(
+        "pokecoach_python.workflow.runner.provenance_for_worker_compat",
+        lambda *_: (_ for _ in ()).throw(AssertionError("no provenance check")),
+    )
     monkeypatch.setattr("pokecoach_python.workflow.runner.build_engine_adapter", lambda *_: (_ for _ in ()).throw(AssertionError("no engine build")))
     repo = FakeRepo()
     runner = WorkflowRunner(
@@ -341,6 +347,9 @@ def test_workflow_runner_publishes_d_before_synthesis(monkeypatch) -> None:
                 provenance=_real_run_provenance(),
             )
 
+        def ensure_run_active(self, *_args, **_kwargs):
+            return None
+
         def update_progress(self, *_args, **_kwargs):
             return True
 
@@ -395,7 +404,7 @@ def test_workflow_runner_publishes_d_before_synthesis(monkeypatch) -> None:
 
     registry._HANDLERS["D"] = fake_phase_d
     registry._HANDLERS["synthesis"] = fake_phase_e
-    monkeypatch.setattr("pokecoach_python.workflow.runner._initial_provenance", lambda *_: {})
+    monkeypatch.setattr("pokecoach_python.workflow.runner.provenance_for_worker_compat", lambda *_: {})
     monkeypatch.setattr("pokecoach_python.workflow.runner.assert_run_engine_compatible", lambda *_: None)
     monkeypatch.setattr("pokecoach_python.workflow.runner.build_engine_adapter", lambda *_: DummyEngine())
     repo = FakeRepo()

@@ -6,6 +6,7 @@ import hashlib
 import json
 from typing import Any
 
+from pokecoach_python.core.analysis_errors import RunExecutionStopped
 from pokecoach_python.engine.contracts import BattleRecord, SimulationRequest
 from pokecoach_python.schemas.analysis_result import SimulationResultV2, validate_result
 from pokecoach_python.workflow.aggregation.refinement import (
@@ -130,6 +131,7 @@ def run_phase_d(context: PhaseContext) -> PhaseOutput:
             if attempts_total >= attempt_cap:
                 break
             attempts_total += 1
+            context.ensure_active()
             battle_seed = _battle_seed(context.seed, plan_index, attempt)
             req = SimulationRequest(
                 our_snapshot=context.our_snapshot,
@@ -145,6 +147,8 @@ def run_phase_d(context: PhaseContext) -> PhaseOutput:
             )
             try:
                 record = context.engine.full_battle(req)
+            except RunExecutionStopped:
+                raise
             except Exception:
                 errors_total += 1
                 continue
@@ -179,6 +183,8 @@ def run_phase_d(context: PhaseContext) -> PhaseOutput:
             sample_key = sample_key_for_refinement(plan_index)
             try:
                 battle_id = insert_fn(record, sample_key)
+            except RunExecutionStopped:
+                raise
             except Exception as exc:
                 raise RuntimeError("failed to persist refinement battle") from exc
             accepted = record
