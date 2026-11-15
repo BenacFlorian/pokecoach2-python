@@ -6,7 +6,6 @@ import asyncio
 import os
 import uuid
 from typing import Any
-from urllib.parse import urlparse
 
 from pokecoach_vgc_bridge.battle_capture import BattleCapture
 from pokecoach_vgc_bridge.inference_control import (
@@ -30,16 +29,14 @@ __all__ = [
 ]
 
 
-def _showdown_port_from_env() -> int:
-    url = os.environ.get("POKECOACH_SHOWDOWN_SERVER", "ws://127.0.0.1:8090/showdown/websocket")
-    parsed = urlparse(url.replace("ws://", "http://").replace("wss://", "https://"))
-    return parsed.port or 8090
+def _showdown_url_from_env() -> str:
+    return os.environ.get("POKECOACH_SHOWDOWN_SERVER", "ws://127.0.0.1:8090/showdown/websocket")
 
 
 async def _probe_showdown(timeout: float = 2.0) -> None:
     import websockets
 
-    url = os.environ.get("POKECOACH_SHOWDOWN_SERVER", "ws://127.0.0.1:8090/showdown/websocket")
+    url = _showdown_url_from_env()
     async with asyncio.timeout(timeout):
         async with websockets.connect(url):
             return
@@ -224,9 +221,8 @@ async def create_policy_pair(
     player_deterministic = _effective_player_deterministic(profile, deterministic)
     reg = pokecoach_regulation_to_vgc_reg(regulation)
     battle_format = deps["format_map"][reg]
-    port = _showdown_port_from_env()
     server = deps["ServerConfiguration"](
-        f"ws://localhost:{port}/showdown/websocket",
+        _showdown_url_from_env(),
         "https://play.pokemonshowdown.com/action.php?",
     )
     our_packed = snapshot_to_showdown_export(our_snapshot)

@@ -35,7 +35,12 @@ def test_resolve_open_team_sheets_matrix(env, profile_ots, expected):
     assert resolve_open_team_sheets(profile, env) is expected
 
 
-def test_create_policy_pair_uses_profile_deterministic(monkeypatch):
+@pytest.mark.parametrize("server_url", [
+    None,
+    "ws://showdown:8000/showdown/websocket",
+    "wss://sim.example.test/custom/websocket",
+])
+def test_create_policy_pair_uses_profile_deterministic(monkeypatch, server_url):
     import asyncio
     profile = _sample_profile(deterministic=True)
 
@@ -54,7 +59,7 @@ def test_create_policy_pair_uses_profile_deterministic(monkeypatch):
         "torch": MagicMock(device=MagicMock(return_value="cpu")),
         "PolicyPlayer": FakePolicyPlayer,
         "AccountConfiguration": lambda *a, **k: None,
-        "ServerConfiguration": lambda *a, **k: None,
+        "ServerConfiguration": MagicMock(),
         "Teambuilder": MagicMock(
             join_team=lambda *a, **k: "",
             parse_showdown_team=lambda *a, **k: [],
@@ -95,6 +100,10 @@ def test_create_policy_pair_uses_profile_deterministic(monkeypatch):
         patch.dict(os.environ, {}, clear=False),
     ):
         monkeypatch.delenv("POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS", raising=False)
+        if server_url is None:
+            monkeypatch.delenv("POKECOACH_SHOWDOWN_SERVER", raising=False)
+        else:
+            monkeypatch.setenv("POKECOACH_SHOWDOWN_SERVER", server_url)
         from pokecoach_vgc_bridge.battle_session import create_policy_pair
 
         p1, p2 = asyncio.run(
@@ -111,6 +120,10 @@ def test_create_policy_pair_uses_profile_deterministic(monkeypatch):
     assert p2.deterministic is True
     assert captured[0]["deterministic"] is True
     assert captured[1]["deterministic"] is True
+    fake_deps["ServerConfiguration"].assert_called_once_with(
+        server_url or "ws://127.0.0.1:8090/showdown/websocket",
+        "https://play.pokemonshowdown.com/action.php?",
+    )
 
 
 def test_create_policy_pair_preview_override_deterministic(monkeypatch):
