@@ -10,12 +10,15 @@ from typing import Any
 
 from pokecoach_python.engine.contracts import BattleRecord
 from pokecoach_python.schemas.analysis_result import (
+    FourFrequency,
+    LeadPickSamplingDiagnostics,
     LeadPickSection,
     LeadSelection,
     OpponentLeadEntry,
     OpponentLeadsSection,
+    SelectionFrequency,
 )
-from pokecoach_python.workflow.aggregation.leads import canonical_lead, lead_id
+from pokecoach_python.workflow.aggregation.leads import canonical_lead
 from pokecoach_python.workflow.battle_records import canonical_four, four_slots_leads_first
 
 
@@ -196,12 +199,66 @@ def _build_comparisons(
     return rows
 
 
+def _build_sampling_diagnostics(
+    battles: Sequence[BattleRecord],
+    studied_ids: Sequence[str],
+    leads_by_slots: dict[tuple[int, int], str],
+) -> LeadPickSamplingDiagnostics:
+    studied_set = set(studied_ids)
+    four_counts: Counter[tuple[int, int, int, int]] = Counter()
+    selection_counts: Counter[tuple[tuple[int, int, int, int], tuple[int, int]]] = Counter()
+    sample_size = 0
+    for battle in battles:
+        lid = _lead_id_for_battle(battle, leads_by_slots)
+        if lid not in studied_set:
+            continue
+        sample_size += 1
+        key = _candidate_key(battle)
+        four_counts[key.our_four] += 1
+        selection_counts[(key.our_four, key.our_lead)] += 1
+
+    if sample_size == 0:
+        raise ValueError("no battles for sampling diagnostics")
+
+    four_rows = [
+        FourFrequency(ourFourSlots=four, count=count)
+        for four, count in sorted(
+            four_counts.items(),
+            key=lambda item: (-item[1], item[0]),
+        )
+    ]
+    selection_rows = [
+        SelectionFrequency(
+            selection=LeadSelection(
+                ourFourSlots=four_slots_leads_first(four, lead),
+                ourLeadSlots=lead,
+            ),
+            count=count,
+        )
+        for (four, lead), count in sorted(
+            selection_counts.items(),
+            key=lambda item: (-item[1], item[0][0], item[0][1]),
+        )
+    ]
+    return LeadPickSamplingDiagnostics(
+        source="policy-samples",
+        samplingPolicy="stochastic-team-preview-v1",
+        sampleSize=sample_size,
+        uniqueFours=len(four_rows),
+        uniqueSelections=len(selection_rows),
+        fourFrequencies=four_rows,
+        selectionFrequencies=selection_rows,
+    )
+
+
 def _build_limitations(
     selection: _CandidateKey,
     studied: Sequence[OpponentLeadEntry],
     weights: dict[str, Fraction],
     stats: dict[_CandidateKey, dict[str, _OutcomeBucket]],
     rule_version: str,
+    *,
+    sampling: LeadPickSamplingDiagnostics | None = None,
 ) -> list[str]:
     cov = _coverage_weight(selection, [e.id for e in studied], weights, stats)
     total_n = _total_sample(selection, [e.id for e in studied], stats)
@@ -222,6 +279,12 @@ def _build_limitations(
         )
     if total_n < 30:
         lines.append("Effectifs faibles : interpréter la recommandation avec prudence.")
+    if sampling is not None and sampling.uniqueFours == 1:
+        lines.append(
+            "La policy n'a échantillonné qu'un seul quatre sur "
+            f"{sampling.sampleSize} combats de phase C ; aucune composition alternative "
+            "n'a pu être comparée."
+        )
     return lines
 
 
@@ -257,7 +320,10 @@ def aggregate_selections(
     ranked = _rank_candidates(list(candidates_set), studied_ids, weights, stats)
     winner = ranked[0]
     comparisons = _build_comparisons(ranked, studied, stats)
-    limitations = _build_limitations(winner, studied, weights, stats, rule_version)
+    sampling = _build_sampling_diagnostics(battles, studied_ids, leads_by_slots)
+    limitations = _build_limitations(
+        winner, studied, weights, stats, rule_version, sampling=sampling
+    )
 
     winner_four = four_slots_leads_first(winner.our_four, winner.our_lead)
     return LeadPickSection(
@@ -268,4 +334,5 @@ def aggregate_selections(
         comparisons=comparisons,
         selectionRuleVersion=rule_version,
         limitations=limitations,
+        samplingDiagnostics=sampling,
     )

@@ -163,6 +163,66 @@ def test_draw_and_single_battle_rate():
     assert row["draws"] == 1 and row["wins"] == 0 and row["losses"] == 0
 
 
+def test_sampling_diagnostics_distinguish_four_from_four_lead():
+    leads = _leads_section()
+    battles = [
+        _battle(opp_lead=(0, 1), our_four=(0, 1, 2, 3), our_lead=(0, 1), outcome="win", seed=1),
+        _battle(opp_lead=(0, 1), our_four=(0, 1, 2, 3), our_lead=(2, 3), outcome="win", seed=2),
+    ]
+    result = aggregate_selections(battles, leads, top_n=1)
+    diag = result.samplingDiagnostics
+    assert diag is not None
+    assert diag.uniqueFours == 1
+    assert diag.uniqueSelections == 2
+
+
+def test_sampling_diagnostics_are_stably_sorted():
+    leads = OpponentLeadsSection(
+        sampleSize=10,
+        leads=[OpponentLeadEntry(id="lead-0-1", slots=(0, 1), count=10)],
+    )
+    battles = [
+        _battle(opp_lead=(0, 1), our_four=(0, 1, 2, 3), our_lead=(0, 1), outcome="win", seed=i)
+        for i in range(3)
+    ] + [
+        _battle(opp_lead=(0, 1), our_four=(0, 1, 4, 5), our_lead=(0, 1), outcome="win", seed=i + 10)
+        for i in range(1)
+    ]
+    result = aggregate_selections(battles, leads, top_n=1)
+    diag = result.samplingDiagnostics
+    assert diag is not None
+    assert diag.fourFrequencies[0].count == 3
+    assert diag.fourFrequencies[1].count == 1
+
+
+def test_single_four_adds_explicit_limitation():
+    leads = OpponentLeadsSection(
+        sampleSize=5,
+        leads=[OpponentLeadEntry(id="lead-0-1", slots=(0, 1), count=5)],
+    )
+    cand = (0, 1, 2, 3)
+    battles = [
+        _battle(opp_lead=(0, 1), our_four=cand, our_lead=(0, 1), outcome="win", seed=i)
+        for i in range(4)
+    ]
+    result = aggregate_selections(battles, leads, top_n=1)
+    assert result.samplingDiagnostics is not None
+    assert result.samplingDiagnostics.uniqueFours == 1
+    assert any("un seul quatre" in line for line in result.limitations)
+
+
+def test_diagnostics_ignore_unstudied_opponent_leads():
+    leads = _leads_section()
+    battles = [
+        _battle(opp_lead=(0, 1), our_four=(0, 1, 2, 3), our_lead=(0, 1), outcome="win", seed=1),
+        _battle(opp_lead=(4, 5), our_four=(0, 1, 4, 5), our_lead=(0, 1), outcome="win", seed=2),
+    ]
+    result = aggregate_selections(battles, leads, top_n=1)
+    diag = result.samplingDiagnostics
+    assert diag is not None
+    assert diag.sampleSize == 1
+
+
 def test_unobserved_matchup_omitted_from_comparisons():
     leads = _leads_section()
     cand = (0, 1, 2, 3)

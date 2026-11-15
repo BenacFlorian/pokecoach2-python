@@ -60,6 +60,10 @@ class Settings(BaseSettings):
         alias="VGC_CHECKPOINT_SHA256", default=None
     )
     vgc_model_profile: str | None = Field(alias="VGC_MODEL_PROFILE", default=None)
+    showdown_open_team_sheets: bool | None = Field(
+        alias="POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS",
+        default=None,
+    )
     showdown_server_url: str = Field(
         alias="SHOWDOWN_SERVER_URL",
         default="ws://127.0.0.1:8090/showdown/websocket",
@@ -217,6 +221,24 @@ class Settings(BaseSettings):
         if value < 1 or value > 65535:
             raise ValueError("POSTGRES_PORT must be between 1 and 65535")
         return value
+
+    @field_validator("showdown_open_team_sheets", mode="before")
+    @classmethod
+    def parse_showdown_open_team_sheets(cls, value: object) -> bool | None:
+        if value is None:
+            return None
+        if value == "":
+            return None
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in ("1", "true", "yes", "on"):
+                return True
+            if normalized in ("0", "false", "no", "off"):
+                return False
+            raise ValueError("POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS")
+        raise ValueError("POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS")
 
     def safe_repr(self) -> str:
         return (

@@ -15,6 +15,12 @@ from pokecoach_python.workflow.aggregation.refinement import (
 )
 from pokecoach_python.workflow.battle_records import sample_key_for_refinement
 from pokecoach_python.workflow.budgets import max_attempts, phase_d_valid_budget
+from pokecoach_python.workflow.db_write_throttle import (
+    BattleInsertBatcher,
+    PHASE_D_INSERT_BATCH,
+    PHASE_D_PROGRESS_BATCH,
+    report_progress_batched,
+)
 from pokecoach_python.workflow.refinement_sampling import (
     OpponentScenario,
     build_refinement_plan,
@@ -111,93 +117,112 @@ def run_phase_d(context: PhaseContext) -> PhaseOutput:
     rejects_total = 0
     errors_total = 0
     local_battles: list[BattleRecord] = []
-    battle_ids: list[str] = []
 
     def default_insert(record: BattleRecord, _sample_key: str) -> str:
         local_battles.append(record)
         return f"local-{len(local_battles)}"
 
-    insert_fn = context.insert_battle or default_insert
+    battle_batcher: BattleInsertBatcher | None = None
+    if context.insert_battles_batch:
+        battle_batcher = BattleInsertBatcher(
+            insert_batch=context.insert_battles_batch,
+            batch_size=PHASE_D_INSERT_BATCH,
+        )
+        insert_fn = lambda record, sample_key: battle_batcher.add(record, sample_key)  # noqa: E731
+    else:
+        insert_fn = context.insert_battle or default_insert
 
     context.report_progress("D", 0, budget)
 
     stored: list[BattleRecord] = []
 
-    for plan_index in range(budget):
-        scenario = plan.scenarios[plan_index]
-        accepted: BattleRecord | None = None
-        accepted_id: str | None = None
-        for attempt in range(1, _MAX_ATTEMPTS_PER_INDEX + 1):
-            if attempts_total >= attempt_cap:
+    battle_ids: list[str] = []
+
+    try:
+        for plan_index in range(budget):
+            scenario = plan.scenarios[plan_index]
+            accepted: BattleRecord | None = None
+            for attempt in range(1, _MAX_ATTEMPTS_PER_INDEX + 1):
+                if attempts_total >= attempt_cap:
+                    break
+                attempts_total += 1
+                context.ensure_active()
+                battle_seed = _battle_seed(context.seed, plan_index, attempt)
+                req = SimulationRequest(
+                    our_snapshot=context.our_snapshot,
+                    opponent_snapshot=context.opponent_snapshot,
+                    regulation=context.regulation,
+                    checkpoint_id=str(context.parameters.get("checkpoint_id", "stub-bc-v1")),
+                    seed=battle_seed,
+                    timeout_seconds=context.full_battle_timeout_seconds,
+                    opponent_lead=scenario.opponent_lead_slots,
+                    our_selection=selection.ourFourSlots,
+                    our_lead_slots=selection.ourLeadSlots,
+                    opponent_back_pair=scenario.opponent_back_pair,
+                )
+                try:
+                    record = context.engine.full_battle(req)
+                except RunExecutionStopped:
+                    raise
+                except Exception:
+                    errors_total += 1
+                    continue
+                if record.outcome == "technical":
+                    rejects_total += 1
+                    continue
+                try:
+                    validate_refinement_battle(
+                        record,
+                        our_selection=selection,
+                        scenario=scenario,
+                    )
+                except ValueError:
+                    rejects_total += 1
+                    continue
+                meta = dict(record.meta or {})
+                meta.update(
+                    _sampling_meta(
+                        plan_index=plan_index,
+                        scenario=scenario,
+                        battle_seed=battle_seed,
+                        attempt=attempt,
+                    )
+                )
+                record = BattleRecord(
+                    preview=record.preview,
+                    turns=record.turns,
+                    outcome=record.outcome,
+                    participants=record.participants,
+                    meta=meta,
+                )
+                sample_key = sample_key_for_refinement(plan_index)
+                try:
+                    returned = insert_fn(record, sample_key)
+                except RunExecutionStopped:
+                    raise
+                except Exception as exc:
+                    raise RuntimeError("failed to persist refinement battle") from exc
+                accepted = record
+                if battle_batcher is None:
+                    battle_ids.append(str(returned))
                 break
-            attempts_total += 1
-            context.ensure_active()
-            battle_seed = _battle_seed(context.seed, plan_index, attempt)
-            req = SimulationRequest(
-                our_snapshot=context.our_snapshot,
-                opponent_snapshot=context.opponent_snapshot,
-                regulation=context.regulation,
-                checkpoint_id=str(context.parameters.get("checkpoint_id", "stub-bc-v1")),
-                seed=battle_seed,
-                timeout_seconds=context.full_battle_timeout_seconds,
-                opponent_lead=scenario.opponent_lead_slots,
-                our_selection=selection.ourFourSlots,
-                our_lead_slots=selection.ourLeadSlots,
-                opponent_back_pair=scenario.opponent_back_pair,
-            )
-            try:
-                record = context.engine.full_battle(req)
-            except RunExecutionStopped:
-                raise
-            except Exception:
-                errors_total += 1
-                continue
-            if record.outcome == "technical":
-                rejects_total += 1
-                continue
-            try:
-                validate_refinement_battle(
-                    record,
-                    our_selection=selection,
-                    scenario=scenario,
+            if accepted is None:
+                raise RuntimeError(
+                    f"phase D budget not met at index {plan_index}: "
+                    f"(attempts={attempts_total}, rejects={rejects_total}, errors={errors_total})"
                 )
-            except ValueError:
-                rejects_total += 1
-                continue
-            meta = dict(record.meta or {})
-            meta.update(
-                _sampling_meta(
-                    plan_index=plan_index,
-                    scenario=scenario,
-                    battle_seed=battle_seed,
-                    attempt=attempt,
-                )
+            stored.append(accepted)
+            report_progress_batched(
+                context.report_progress,
+                "D",
+                len(stored),
+                budget,
+                PHASE_D_PROGRESS_BATCH,
             )
-            record = BattleRecord(
-                preview=record.preview,
-                turns=record.turns,
-                outcome=record.outcome,
-                participants=record.participants,
-                meta=meta,
-            )
-            sample_key = sample_key_for_refinement(plan_index)
-            try:
-                battle_id = insert_fn(record, sample_key)
-            except RunExecutionStopped:
-                raise
-            except Exception as exc:
-                raise RuntimeError("failed to persist refinement battle") from exc
-            accepted = record
-            accepted_id = battle_id
-            break
-        if accepted is None or accepted_id is None:
-            raise RuntimeError(
-                f"phase D budget not met at index {plan_index}: "
-                f"(attempts={attempts_total}, rejects={rejects_total}, errors={errors_total})"
-            )
-        stored.append(accepted)
-        battle_ids.append(accepted_id)
-        context.report_progress("D", len(stored), budget)
+    finally:
+        if battle_batcher is not None:
+            battle_batcher.flush()
+            battle_ids = [str(bid) for bid in battle_batcher.all_ids()]
 
     battles_raw = list(context.list_battles()) if context.list_battles else stored
     if len(battles_raw) != budget:

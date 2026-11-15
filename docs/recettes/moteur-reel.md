@@ -62,7 +62,15 @@ export POKECOACH_VGC_REAL=1
 uv run pytest tests/integration/test_vgc_preview_real.py tests/integration/test_vgc_first_turn_real.py tests/integration/test_vgc_full_battle_real.py tests/integration/test_vgc_constraints_real.py -q
 ```
 
-Optionnel : `POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS=1` réactive les open team sheets Showdown (défaut `0`, plus fiable avec le serveur local).
+### Open team sheets (OTS)
+
+Priorité au démarrage d'une paire de joueurs :
+
+1. `POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS` si la variable est **explicitement** définie (`1`/`0`, `true`/`false`, etc.) ;
+2. sinon `inference.open_team_sheets` dans `VGC_MODEL_PROFILE` (défaut YAML : `false` pour les profils legacy) ;
+3. sinon `false` sans profil.
+
+Le checkpoint M-C actuel (`bc-mb-mc-80k-…`) doit avoir `open_team_sheets: true` : le dataset d'entraînement exigeait `require_ots: true`. Dans `.env` local, `POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS=true` est un override visible mais **facultatif** ; retirez-la pour laisser le profil seul décider.
 
 ## Nouveau run après changement moteur
 

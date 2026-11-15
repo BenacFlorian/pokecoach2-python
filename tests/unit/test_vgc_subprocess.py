@@ -116,6 +116,29 @@ def test_bridge_close_terminates_process(fixture_env):
     assert proc.poll() is not None
 
 
+def test_subprocess_env_omits_ots_when_unset(monkeypatch):
+    monkeypatch.delenv("POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS", raising=False)
+    settings = Settings(_env_file=None, POSTGRES_PASSWORD="test")
+    env = VgcSubprocessClient._default_env(settings)
+    assert "POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS" not in env
+
+
+def test_subprocess_env_sets_ots_when_configured(monkeypatch):
+    monkeypatch.delenv("POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS", raising=False)
+    on = Settings(
+        _env_file=None,
+        POSTGRES_PASSWORD="test",
+        POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS="true",
+    )
+    off = Settings(
+        _env_file=None,
+        POSTGRES_PASSWORD="test",
+        POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS="false",
+    )
+    assert VgcSubprocessClient._default_env(on)["POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS"] == "1"
+    assert VgcSubprocessClient._default_env(off)["POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS"] == "0"
+
+
 def test_subprocess_env_propagates_lifecycle_timeouts():
     settings = Settings(
         POSTGRES_PASSWORD="test",

@@ -21,6 +21,12 @@ from pokecoach_python.workflow.budgets import (
     phase_c_valid_budget,
     studied_opponent_lead_count,
 )
+from pokecoach_python.workflow.db_write_throttle import (
+    BattleInsertBatcher,
+    PHASE_C_INSERT_BATCH,
+    PHASE_C_PROGRESS_BATCH,
+    report_progress_batched,
+)
 from pokecoach_python.workflow.types import PhaseContext, PhaseOutput
 
 _RULE_VERSION = "selection-v1"
@@ -81,62 +87,80 @@ def run_phase_c(context: PhaseContext) -> PhaseOutput:
     def default_insert(record: BattleRecord, _sample_key: str) -> None:
         local_battles.append(record)
 
-    insert_fn = context.insert_battle or default_insert
+    battle_batcher: BattleInsertBatcher | None = None
+    if context.insert_battles_batch:
+        battle_batcher = BattleInsertBatcher(
+            insert_batch=context.insert_battles_batch,
+            batch_size=PHASE_C_INSERT_BATCH,
+        )
+        insert_fn = lambda record, sample_key: battle_batcher.add(record, sample_key)  # noqa: E731
+    else:
+        insert_fn = context.insert_battle or default_insert
 
     context.report_progress("C", 0, total_target)
 
-    for lead_index, entry in enumerate(studied):
-        lead_slots = canonical_lead(entry.slots)
-        valid_count = 0
-        sample_index = 0
-        attempts = 0
+    try:
+        for lead_index, entry in enumerate(studied):
+            lead_slots = canonical_lead(entry.slots)
+            valid_count = 0
+            sample_index = 0
+            attempts = 0
 
-        while valid_count < budget and attempts < per_lead_cap:
-            attempts += 1
-            context.ensure_active()
-            attempts_total += 1
-            req = SimulationRequest(
-                our_snapshot=context.our_snapshot,
-                opponent_snapshot=context.opponent_snapshot,
-                regulation=context.regulation,
-                checkpoint_id=str(context.parameters.get("checkpoint_id", "stub-bc-v1")),
-                seed=_attempt_seed(context.seed, lead_index, sample_index, attempts),
-                timeout_seconds=context.full_battle_timeout_seconds,
-                opponent_lead=lead_slots,
-            )
-            try:
-                record = context.engine.full_battle(req)
-                if record.outcome == "technical":
-                    rejects_total += 1
-                    continue
-                validate_terminal_battle(record, expected_opponent_lead=lead_slots)
-                sample_key = sample_key_for_lead(lead_slots, valid_count)
-                _persist_battle(insert_fn, record, lead_slots, sample_key)
-                valid_count += 1
-                sample_index += 1
-                done_global += 1
-                context.report_progress("C", done_global, total_target)
-            except RunExecutionStopped:
-                raise
-            except ValueError:
-                rejects_total += 1
-            except Exception as exc:
-                errors_total += 1
-                if errors_total <= 3:
-                    import logging
-
-                    logging.getLogger(__name__).warning(
-                        "phase C full_battle attempt %s failed: %s: %s",
-                        attempts,
-                        type(exc).__name__,
-                        exc,
+            while valid_count < budget and attempts < per_lead_cap:
+                attempts += 1
+                context.ensure_active()
+                attempts_total += 1
+                req = SimulationRequest(
+                    our_snapshot=context.our_snapshot,
+                    opponent_snapshot=context.opponent_snapshot,
+                    regulation=context.regulation,
+                    checkpoint_id=str(context.parameters.get("checkpoint_id", "stub-bc-v1")),
+                    seed=_attempt_seed(context.seed, lead_index, sample_index, attempts),
+                    timeout_seconds=context.full_battle_timeout_seconds,
+                    opponent_lead=lead_slots,
+                )
+                try:
+                    record = context.engine.full_battle(req)
+                    if record.outcome == "technical":
+                        rejects_total += 1
+                        continue
+                    validate_terminal_battle(record, expected_opponent_lead=lead_slots)
+                    sample_key = sample_key_for_lead(lead_slots, valid_count)
+                    _persist_battle(insert_fn, record, lead_slots, sample_key)
+                    valid_count += 1
+                    sample_index += 1
+                    done_global += 1
+                    report_progress_batched(
+                        context.report_progress,
+                        "C",
+                        done_global,
+                        total_target,
+                        PHASE_C_PROGRESS_BATCH,
                     )
+                except RunExecutionStopped:
+                    raise
+                except ValueError:
+                    rejects_total += 1
+                except Exception as exc:
+                    errors_total += 1
+                    if errors_total <= 3:
+                        import logging
 
-        if valid_count < budget:
-            raise RuntimeError(
-                f"phase C budget not met for {entry.id}: {valid_count}/{budget} "
-                f"(attempts={attempts}, rejects={rejects_total}, errors={errors_total})"
-            )
+                        logging.getLogger(__name__).warning(
+                            "phase C full_battle attempt %s failed: %s: %s",
+                            attempts,
+                            type(exc).__name__,
+                            exc,
+                        )
+
+            if valid_count < budget:
+                raise RuntimeError(
+                    f"phase C budget not met for {entry.id}: {valid_count}/{budget} "
+                    f"(attempts={attempts}, rejects={rejects_total}, errors={errors_total})"
+                )
+    finally:
+        if battle_batcher is not None:
+            battle_batcher.flush()
 
     battles = list(context.list_battles()) if context.list_battles else local_battles
     expected_count = len(studied) * budget

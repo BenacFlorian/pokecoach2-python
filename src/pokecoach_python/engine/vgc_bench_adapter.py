@@ -88,11 +88,20 @@ class VgcBenchEngineAdapter(EngineAdapter):
         )
         opp = raw["opponentLeadSlots"]
         our_raw = raw.get("ourLeadSlots")
+
+        def _four_slots(key: str) -> tuple[int, int, int, int] | None:
+            slots = raw.get(key)
+            if not isinstance(slots, list) or len(slots) != 4:
+                return None
+            return tuple(int(s) for s in slots)
+
         return PreviewRecord(
             opponent_lead_slots=(int(opp[0]), int(opp[1])),
             our_lead_slots=(
                 (int(our_raw[0]), int(our_raw[1])) if our_raw is not None else None
             ),
+            our_four_slots=_four_slots("ourFourSlots"),
+            opponent_four_slots=_four_slots("opponentFourSlots"),
             meta=dict(raw.get("meta") or {}),
         )
 

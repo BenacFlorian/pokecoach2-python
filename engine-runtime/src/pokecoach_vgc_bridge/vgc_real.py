@@ -6,6 +6,7 @@ import os
 from typing import Any
 
 from pokecoach_vgc_bridge.checkpoint import verify_checkpoint
+from pokecoach_vgc_bridge.inference_control import resolve_open_team_sheets
 from pokecoach_vgc_bridge.model_profile import (
     VgcModelProfile,
     load_vgc_model_profile_from_env,
@@ -15,6 +16,20 @@ from pokecoach_vgc_bridge.showdown_teams import (
     pokecoach_regulation_to_vgc_reg,
     snapshot_to_showdown_export,
 )
+
+
+def _inference_observability(profile: VgcModelProfile | None) -> dict[str, Any]:
+    ots = resolve_open_team_sheets(
+        profile,
+        os.environ.get("POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS"),
+    )
+    return {
+        "profileDeterministic": (
+            profile.inference.deterministic if profile is not None else None
+        ),
+        "previewDeterministic": False,
+        "openTeamSheets": ots,
+    }
 
 
 def try_load(checkpoint_path: str, manifest_path: str) -> RealRuntime | None:
@@ -73,6 +88,7 @@ class RealRuntime:
             payload["modelId"] = self._profile.model_id
             payload["architecture"] = self._profile.architecture_dict
             payload["modelProfile"] = str(self._profile.profile_path)
+        payload.update(_inference_observability(self._profile))
         return payload
 
     def handle(self, mode: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -100,7 +116,7 @@ class RealRuntime:
         checkpoint_id = str(config.get("checkpoint_id", ""))
         if self._profile is not None:
             checkpoint_id = self._profile.model_id
-        return {
+        result = {
             "regulation": regulation,
             "checkpointId": checkpoint_id,
             "checkpointFingerprint": self._fingerprint[:16],
@@ -115,6 +131,8 @@ class RealRuntime:
                 "requires Showdown + vgc-bench in engine-runtime",
             ),
         }
+        result.update(_inference_observability(self._profile))
+        return result
 
     def _preview(self, payload: dict[str, Any]) -> dict[str, Any]:
         from pokecoach_vgc_bridge.battle_runner import run_preview_sync

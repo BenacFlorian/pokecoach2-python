@@ -68,11 +68,55 @@ class LeadSelection(StrictModel):
         return self
 
 
+class FourFrequency(StrictModel):
+    ourFourSlots: tuple[int, int, int, int]
+    count: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def canonical_four_slots(self) -> FourFrequency:
+        slots = tuple(sorted(self.ourFourSlots))
+        if len(set(slots)) != 4 or any(s < 0 or s > 5 for s in slots):
+            raise ValueError("ourFourSlots must be four distinct indices 0-5")
+        if slots != self.ourFourSlots:
+            raise ValueError("ourFourSlots must be sorted ascending")
+        return self
+
+
+class SelectionFrequency(StrictModel):
+    selection: LeadSelection
+    count: int = Field(ge=1)
+
+
+class LeadPickSamplingDiagnostics(StrictModel):
+    source: Literal["policy-samples"]
+    samplingPolicy: Literal["stochastic-team-preview-v1"]
+    sampleSize: int = Field(ge=1)
+    uniqueFours: int = Field(ge=1, le=15)
+    uniqueSelections: int = Field(ge=1)
+    fourFrequencies: list[FourFrequency]
+    selectionFrequencies: list[SelectionFrequency]
+
+    @model_validator(mode="after")
+    def validate_frequency_totals(self) -> LeadPickSamplingDiagnostics:
+        four_sum = sum(row.count for row in self.fourFrequencies)
+        sel_sum = sum(row.count for row in self.selectionFrequencies)
+        if four_sum != self.sampleSize:
+            raise ValueError("fourFrequencies counts must sum to sampleSize")
+        if sel_sum != self.sampleSize:
+            raise ValueError("selectionFrequencies counts must sum to sampleSize")
+        if len(self.fourFrequencies) != self.uniqueFours:
+            raise ValueError("uniqueFours must match fourFrequencies length")
+        if len(self.selectionFrequencies) != self.uniqueSelections:
+            raise ValueError("uniqueSelections must match selectionFrequencies length")
+        return self
+
+
 class LeadPickSection(StrictModel):
     selection: LeadSelection
     comparisons: list[Any]
     selectionRuleVersion: str
     limitations: list[str]
+    samplingDiagnostics: LeadPickSamplingDiagnostics | None = None
 
 
 class OpeningStudyEntry(StrictModel):

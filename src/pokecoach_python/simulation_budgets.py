@@ -52,3 +52,11 @@ ATTEMPT_MULTIPLIER: int = 5
 # Phase C : nombre de leads adverses (top fréquence A) à étudier.
 STUDIED_OPPONENT_LEAD_COUNT_DEFAULT: int = 3
 STUDIED_OPPONENT_LEAD_ALLOWED: tuple[int, ...] = (2, 3)
+
+# Fréquence des écritures DB pendant les runs longs (progress + battles).
+PROGRESS_UPDATE_BATCH_A: int = 50
+PROGRESS_UPDATE_BATCH_B: int = 40
+PROGRESS_UPDATE_BATCH_C: int = 30
+PROGRESS_UPDATE_BATCH_D: int = 30
+BATTLE_INSERT_BATCH_C: int = 30
+BATTLE_INSERT_BATCH_D: int = 30

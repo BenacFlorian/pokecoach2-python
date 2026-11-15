@@ -157,20 +157,32 @@ class WorkflowRunner:
                 battle_phase = phase if phase in ("C", "D") else None
                 read_battle_phase = "D" if phase == "synthesis" else battle_phase
 
-                def _insert_battle(rec: BattleRecord, key: str, bp=battle_phase) -> str:
+                def _insert_battles_batch(
+                    batch: list[tuple[BattleRecord, str]], bp=battle_phase
+                ) -> list[str]:
                     if bp not in ("C", "D"):
                         raise RuntimeError("battles only supported for phases C and D")
                     ensure_active()
-                    return str(
-                        self._repo.insert_battle(
-                            run_id,
-                            token,
-                            phase=bp,  # type: ignore[arg-type]
-                            sample_key=key,
-                            record=rec,
-                            expected_opponent_lead=rec.preview.opponent_lead_slots,
+                    items = [
+                        (
+                            key,
+                            rec,
+                            rec.preview.opponent_lead_slots
+                            if bp == "C"
+                            else None,
                         )
+                        for rec, key in batch
+                    ]
+                    ids = self._repo.insert_battles(
+                        run_id,
+                        token,
+                        phase=bp,  # type: ignore[arg-type]
+                        items=items,
                     )
+                    return [str(bid) for bid in ids]
+
+                def _insert_battle(rec: BattleRecord, key: str, bp=battle_phase) -> str:
+                    return _insert_battles_batch([(rec, key)])[0]
 
                 def _list_battles(bp=read_battle_phase) -> list[BattleRecord]:
                     if bp not in ("C", "D"):
@@ -205,6 +217,9 @@ class WorkflowRunner:
                     ),
                     engine_mode=self._settings.engine_mode,
                     insert_battle=_insert_battle if battle_phase in ("C", "D") else None,
+                    insert_battles_batch=(
+                        _insert_battles_batch if battle_phase in ("C", "D") else None
+                    ),
                     list_battles=_list_battles if read_battle_phase in ("C", "D") else None,
                     list_d_battles=_list_d_battles if phase == "synthesis" else None,
                     run_provenance=dict(row.provenance),

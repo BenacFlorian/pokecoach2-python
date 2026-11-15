@@ -39,7 +39,7 @@ from pokecoach_python.workflow.registry import phase_order
 logger = logging.getLogger(__name__)
 
 Operation = Literal["start", "continue", "cancel"]
-LEASE_SECONDS = 60
+LEASE_SECONDS = 180
 
 
 def _pgcode(exc: DBAPIError) -> str | None:
@@ -714,6 +714,126 @@ class AnalysisRepository:
                     },
                 ).scalar_one()
         return battle_id
+
+    def insert_battles(
+        self,
+        run_id: uuid.UUID,
+        token: uuid.UUID,
+        *,
+        phase: Literal["C", "D"],
+        items: list[tuple[str, BattleRecord, tuple[int, int] | None]],
+    ) -> list[uuid.UUID]:
+        """Insert many battles in one transaction (lease check once)."""
+        if not items:
+            return []
+        prepared: list[tuple[str, str, str, str]] = []
+        for sample_key, record, expected_lead in items:
+            if expected_lead is not None:
+                validate_terminal_battle(record, expected_opponent_lead=expected_lead)
+            if self._settings.engine_mode.lower() == "vgc_bench":
+                from pokecoach_python.workflow.battle_records import (
+                    validate_real_engine_battle,
+                )
+
+                validate_real_engine_battle(record, expected_engine="vgc-bench")
+            payload = battle_payload_dict(record)
+            digest = battle_payload_sha256(payload)
+            prepared.append((sample_key, record.outcome, json.dumps(payload), digest))
+
+        ids: list[uuid.UUID] = []
+        with Session(self._engine) as session:
+            with session.begin():
+                locked = session.connection().execute(
+                    text(
+                        """
+                        SELECT status, lease_token
+                        FROM core.matchup_runs
+                        WHERE id = :run_id
+                          AND lease_token = :token
+                          AND status = 'running'
+                          AND lease_expires_at > now()
+                        FOR UPDATE
+                        """
+                    ),
+                    {"run_id": run_id, "token": token},
+                ).first()
+                if locked is None:
+                    exists = session.connection().execute(
+                        text(
+                            """
+                            SELECT status
+                            FROM core.matchup_runs
+                            WHERE id = :run_id
+                            """
+                        ),
+                        {"run_id": run_id},
+                    ).first()
+                    if exists is None:
+                        raise RunExecutionStopped("missing_run", run_id=run_id)
+                    if exists[0] == "cancelled":
+                        raise RunExecutionStopped("cancelled", run_id=run_id)
+                    raise RunExecutionStopped("lease_lost", run_id=run_id)
+
+                for sample_key, outcome, payload_json, digest in prepared:
+                    existing = session.connection().execute(
+                        text(
+                            """
+                            SELECT sha256, payload
+                            FROM core.matchup_run_battles
+                            WHERE run_id = :run_id
+                              AND phase = :phase
+                              AND sample_key = :sample_key
+                            """
+                        ),
+                        {"run_id": run_id, "phase": phase, "sample_key": sample_key},
+                    ).first()
+                    if existing is not None:
+                        if existing[0] != digest:
+                            raise RuntimeError(
+                                "duplicate battle sample_key with different payload"
+                            )
+                        row_id = session.connection().execute(
+                            text(
+                                """
+                                SELECT id FROM core.matchup_run_battles
+                                WHERE run_id = :run_id AND phase = :phase
+                                  AND sample_key = :sample_key
+                                """
+                            ),
+                            {
+                                "run_id": run_id,
+                                "phase": phase,
+                                "sample_key": sample_key,
+                            },
+                        ).scalar_one()
+                        ids.append(row_id)
+                        continue
+                    battle_id = session.connection().execute(
+                        text(
+                            """
+                            INSERT INTO core.matchup_run_battles (
+                              run_id, phase, sample_key, format_version, outcome,
+                              payload, sha256
+                            )
+                            VALUES (
+                              :run_id, :phase, :sample_key, :format_version, :outcome,
+                              CAST(:payload AS jsonb), :sha256
+                            )
+                            RETURNING id
+                            """
+                        ),
+                        {
+                            "run_id": run_id,
+                            "phase": phase,
+                            "sample_key": sample_key,
+                            "format_version": BATTLE_FORMAT_VERSION,
+                            "outcome": outcome,
+                            "payload": payload_json,
+                            "sha256": digest,
+                        },
+                    ).scalar_one()
+                    ids.append(battle_id)
+        return ids
 
     def list_battles(
         self,

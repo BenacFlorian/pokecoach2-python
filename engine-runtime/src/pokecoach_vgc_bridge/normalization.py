@@ -13,16 +13,30 @@ def build_preview(
     opponent_lead: tuple[int, int],
     our_lead: tuple[int, int],
     engine: str,
+    our_four: tuple[int, int, int, int] | None = None,
+    opponent_four: tuple[int, int, int, int] | None = None,
+    our_observation_fingerprint: str | None = None,
+    opponent_observation_fingerprint: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    meta: dict[str, Any] = {
+        "engine": engine,
+        "traceVersion": TRACE_VERSION,
+        "normalizerVersion": NORMALIZER_VERSION,
+    }
+    if our_observation_fingerprint:
+        meta["ourObservationFingerprint"] = our_observation_fingerprint
+    if opponent_observation_fingerprint:
+        meta["opponentObservationFingerprint"] = opponent_observation_fingerprint
+    payload: dict[str, Any] = {
         "opponentLeadSlots": list(opponent_lead),
         "ourLeadSlots": list(our_lead),
-        "meta": {
-            "engine": engine,
-            "traceVersion": TRACE_VERSION,
-            "normalizerVersion": NORMALIZER_VERSION,
-        },
+        "meta": meta,
     }
+    if our_four is not None:
+        payload["ourFourSlots"] = list(our_four)
+    if opponent_four is not None:
+        payload["opponentFourSlots"] = list(opponent_four)
+    return payload
 
 
 def build_turn_one(

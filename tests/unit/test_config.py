@@ -55,6 +55,35 @@ def test_synthesis_budget_helpers():
     assert settings.synthesis_source_token_budget(prompt_overhead_tokens=500) == 8000
 
 
+def test_showdown_open_team_sheets_absent_is_none():
+    settings = Settings(_env_file=None, POSTGRES_PASSWORD="secret")
+    assert settings.showdown_open_team_sheets is None
+
+
+def test_showdown_open_team_sheets_parses_truthy_falsy():
+    on = Settings(
+        _env_file=None,
+        POSTGRES_PASSWORD="secret",
+        POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS="true",
+    )
+    off = Settings(
+        _env_file=None,
+        POSTGRES_PASSWORD="secret",
+        POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS="false",
+    )
+    assert on.showdown_open_team_sheets is True
+    assert off.showdown_open_team_sheets is False
+
+
+def test_showdown_open_team_sheets_invalid_rejected():
+    with pytest.raises(ValidationError, match="POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS"):
+        Settings(
+            _env_file=None,
+            POSTGRES_PASSWORD="secret",
+            POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS="maybe",
+        )
+
+
 def test_synthesis_source_budget_default_100k_input():
     settings = Settings(_env_file=None, POSTGRES_PASSWORD="secret")
     assert settings.llm_input_token_budget == 100_000

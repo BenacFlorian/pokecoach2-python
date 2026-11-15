@@ -43,7 +43,10 @@ def test_preview_real_checkpoint(require_vgc_real, monkeypatch):
             seed=1,
             timeout_seconds=120.0,
         )
-        preview = engine.preview(req)
-        assert len(preview.opponent_lead_slots) == 2
+        preview_a = engine.preview(req)
+        preview_b = engine.preview(req)
+        assert len(preview_a.opponent_lead_slots) == 2
+        assert preview_a.opponent_lead_slots == preview_b.opponent_lead_slots
+        assert preview_a.our_lead_slots == preview_b.our_lead_slots
     finally:
         engine.close()

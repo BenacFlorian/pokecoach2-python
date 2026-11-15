@@ -23,6 +23,10 @@ from pokecoach_python.workflow.aggregation.leads import canonical_lead
 from pokecoach_python.workflow.aggregation.openings import aggregate_openings
 from pokecoach_python.workflow.battle_records import canonical_four, validate_turn_one_selection
 from pokecoach_python.workflow.budgets import max_attempts, phase_b_valid_budget
+from pokecoach_python.workflow.db_write_throttle import (
+    PHASE_B_PROGRESS_BATCH,
+    report_progress_batched,
+)
 from pokecoach_python.workflow.types import PhaseContext, PhaseOutput
 
 _SAMPLING_POLICY = "conditional-back-v1"
@@ -174,7 +178,13 @@ def run_phase_b(context: PhaseContext) -> PhaseOutput:
                 )
                 valid.append(record)
                 done_global += 1
-                context.report_progress("B", done_global, total_target)
+                report_progress_batched(
+                    context.report_progress,
+                    "B",
+                    done_global,
+                    total_target,
+                    PHASE_B_PROGRESS_BATCH,
+                )
             except RunExecutionStopped:
                 raise
             except ValueError as exc:

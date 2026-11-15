@@ -9,11 +9,25 @@ from typing import Any
 from urllib.parse import urlparse
 
 from pokecoach_vgc_bridge.battle_capture import BattleCapture
+from pokecoach_vgc_bridge.inference_control import (
+    PolicyDecisionSeedStream,
+    resolve_open_team_sheets,
+    seed_torch_for_policy_decision,
+)
 from pokecoach_vgc_bridge.showdown_teams import (
     pokecoach_regulation_to_vgc_reg,
     snapshot_to_showdown_export,
 )
 from pokecoach_vgc_bridge.vgc_source import prepare_vgc_bench_source
+
+__all__ = [
+    "create_policy_pair",
+    "ensure_showdown_available",
+    "ensure_showdown_available_async",
+    "imposed_four_with_lead_order",
+    "resolve_open_team_sheets",
+    "vgc_deps_available",
+]
 
 
 def _showdown_port_from_env() -> int:
@@ -174,6 +188,17 @@ def _start_ps_listening(player: Any) -> None:
     )
 
 
+def _effective_player_deterministic(
+    profile: Any,
+    deterministic: bool | None,
+) -> bool:
+    if deterministic is not None:
+        return deterministic
+    if profile is not None:
+        return bool(profile.inference.deterministic)
+    return False
+
+
 async def create_policy_pair(
     *,
     checkpoint_path: str,
@@ -185,9 +210,18 @@ async def create_policy_pair(
     opponent_imposed_lead: tuple[int, int] | None = None,
     our_imposed_four: tuple[int, int, int, int] | None = None,
     opponent_imposed_four: tuple[int, int, int, int] | None = None,
+    deterministic: bool | None = None,
 ) -> tuple[Any, Any]:
+    from pokecoach_vgc_bridge.model_profile import load_vgc_model_profile_from_env
+
     deps = _require_vgc_bench()
     await ensure_showdown_available_async()
+    profile = load_vgc_model_profile_from_env()
+    accept_ots = resolve_open_team_sheets(
+        profile,
+        os.environ.get("POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS"),
+    )
+    player_deterministic = _effective_player_deterministic(profile, deterministic)
     reg = pokecoach_regulation_to_vgc_reg(regulation)
     battle_format = deps["format_map"][reg]
     port = _showdown_port_from_env()
@@ -198,10 +232,31 @@ async def create_policy_pair(
     our_packed = snapshot_to_showdown_export(our_snapshot)
     opp_packed = snapshot_to_showdown_export(opponent_snapshot)
     session_id = uuid.uuid4().hex[:10]
-    accept_ots = os.environ.get("POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS", "0") == "1"
+    torch_mod = deps["torch"]
 
     class RecordingPolicyPlayer(deps["PolicyPlayer"]):
         def choose_move(self, battle: Any):
+            stream = getattr(self, "pokecoach_seed_stream", None)
+            if stream is not None and not getattr(self, "deterministic", False):
+                seed_torch_for_policy_decision(torch_mod, stream)
+            if getattr(battle, "in_team_preview", False) and not getattr(
+                self, "pokecoach_preview_observation_fingerprint", None
+            ):
+                policy = getattr(self, "policy", None)
+                if policy is not None:
+                    from poke_env.environment import DoublesEnv
+
+                    from pokecoach_vgc_bridge.observation_fingerprint import (
+                        fingerprint_policy_observation,
+                    )
+
+                    import numpy as np
+
+                    observation = self.embed_battle(battle, fake_rating=2000)
+                    action_mask = np.array(DoublesEnv.get_action_mask(battle))
+                    self.pokecoach_preview_observation_fingerprint = (
+                        fingerprint_policy_observation(observation, action_mask)
+                    )
             order = super().choose_move(battle)
             capture = getattr(self, "pokecoach_capture", None)
             if capture is not None and not getattr(battle, "in_team_preview", False):
@@ -240,6 +295,7 @@ async def create_policy_pair(
         log_level=40,
         start_listening=False,
         accept_open_team_sheet=accept_ots,
+        deterministic=player_deterministic,
     )
     p2 = RecordingPolicyPlayer(
         account_configuration=deps["AccountConfiguration"](
@@ -253,19 +309,33 @@ async def create_policy_pair(
         log_level=40,
         start_listening=False,
         accept_open_team_sheet=accept_ots,
+        deterministic=player_deterministic,
     )
     device = deps["torch"].device("cpu")
-    from pokecoach_vgc_bridge.model_profile import load_vgc_model_profile_from_env
-
-    profile = load_vgc_model_profile_from_env()
     if profile is not None:
         from pokecoach_vgc_bridge.policy_factory import attach_policy_to_player
 
-        attach_policy_to_player(p1, profile, device_str=str(device))
-        attach_policy_to_player(p2, profile, device_str=str(device))
+        attach_policy_to_player(
+            p1,
+            profile,
+            device_str=str(device),
+            deterministic=player_deterministic,
+            open_team_sheets=accept_ots,
+        )
+        attach_policy_to_player(
+            p2,
+            profile,
+            device_str=str(device),
+            deterministic=player_deterministic,
+            open_team_sheets=accept_ots,
+        )
     else:
         p1.set_policy(checkpoint_path, device)
         p2.set_policy(checkpoint_path, device)
+        p1.deterministic = player_deterministic
+        p2.deterministic = player_deterministic
+    p1.pokecoach_seed_stream = PolicyDecisionSeedStream(seed, "ours")
+    p2.pokecoach_seed_stream = PolicyDecisionSeedStream(seed, "opponent")
     p1.pokecoach_imposed_four = (
         _validate_imposed_four(our_imposed_four) if our_imposed_four is not None else None
     )

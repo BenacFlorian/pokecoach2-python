@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 from contextlib import suppress
+from dataclasses import dataclass
 from typing import Any
 
 from pokecoach_vgc_bridge.battle_session import (
@@ -20,31 +21,73 @@ def _canonical_lead(lead: tuple[int, int]) -> tuple[int, int]:
     return (lead[0], lead[1]) if lead[0] < lead[1] else (lead[1], lead[0])
 
 
+@dataclass(frozen=True)
+class PreviewSelectionResult:
+    our_lead: tuple[int, int]
+    opponent_lead: tuple[int, int]
+    our_four: tuple[int, int, int, int]
+    opponent_four: tuple[int, int, int, int]
+    our_observation_fingerprint: str | None
+    opponent_observation_fingerprint: str | None
+
+
+def _four_from_player(player: Any) -> tuple[int, int, int, int] | None:
+    preview = getattr(player, "pokecoach_preview_slots", ())
+    if len(preview) != 4:
+        return None
+    return tuple(int(slot) for slot in preview)
+
+
 async def _await_preview_selection(
     p1: Any,
     p2: Any,
     *,
     timeout_seconds: float,
-) -> tuple[tuple[int, int], tuple[int, int]]:
+) -> PreviewSelectionResult:
     """Return both selected leads and disconnect before the first battle turn."""
     battle_task = asyncio.create_task(p1.battle_against(p2, n_battles=1))
+    await asyncio.sleep(0)
     try:
         async with asyncio.timeout(timeout_seconds):
             while True:
                 our_preview = getattr(p1, "pokecoach_preview_slots", ())
                 opponent_preview = getattr(p2, "pokecoach_preview_slots", ())
                 if len(our_preview) == 4 and len(opponent_preview) == 4:
-                    return (
-                        (int(our_preview[0]), int(our_preview[1])),
-                        (int(opponent_preview[0]), int(opponent_preview[1])),
+                    our_four = tuple(int(s) for s in our_preview)
+                    opp_four = tuple(int(s) for s in opponent_preview)
+                    return PreviewSelectionResult(
+                        our_lead=(our_four[0], our_four[1]),
+                        opponent_lead=(opp_four[0], opp_four[1]),
+                        our_four=our_four,
+                        opponent_four=opp_four,
+                        our_observation_fingerprint=getattr(
+                            p1, "pokecoach_preview_observation_fingerprint", None
+                        ),
+                        opponent_observation_fingerprint=getattr(
+                            p2, "pokecoach_preview_observation_fingerprint", None
+                        ),
                     )
                 if p1.battles and p2.battles:
                     our_battle = next(iter(p1.battles.values()))
                     opponent_battle = next(iter(p2.battles.values()))
                     try:
-                        return (
-                            _lead_slots_from_battle(our_battle, team_attr="team"),
-                            _lead_slots_from_battle(opponent_battle, team_attr="team"),
+                        our_lead = _lead_slots_from_battle(our_battle, team_attr="team")
+                        opp_lead = _lead_slots_from_battle(opponent_battle, team_attr="team")
+                        our_four = _four_from_player(p1)
+                        opp_four = _four_from_player(p2)
+                        if our_four is None or opp_four is None:
+                            raise RuntimeError("preview four missing")
+                        return PreviewSelectionResult(
+                            our_lead=our_lead,
+                            opponent_lead=opp_lead,
+                            our_four=our_four,
+                            opponent_four=opp_four,
+                            our_observation_fingerprint=getattr(
+                                p1, "pokecoach_preview_observation_fingerprint", None
+                            ),
+                            opponent_observation_fingerprint=getattr(
+                                p2, "pokecoach_preview_observation_fingerprint", None
+                            ),
                         )
                     except (RuntimeError, ValueError):
                         pass
@@ -81,17 +124,22 @@ async def _run_policy_preview_battle(
         opponent_snapshot=opponent_snapshot,
         regulation=regulation,
         seed=seed,
+        deterministic=False,
     )
     timeout = float(os.environ.get("POKECOACH_ENGINE_PREVIEW_LIFECYCLE_TIMEOUT", "90"))
-    our_lead, opp_lead = await _await_preview_selection(
+    selection = await _await_preview_selection(
         p1,
         p2,
         timeout_seconds=timeout,
     )
     return build_preview(
-        opponent_lead=opp_lead,
-        our_lead=our_lead,
+        opponent_lead=selection.opponent_lead,
+        our_lead=selection.our_lead,
         engine="vgc-bench",
+        our_four=selection.our_four,
+        opponent_four=selection.opponent_four,
+        our_observation_fingerprint=selection.our_observation_fingerprint,
+        opponent_observation_fingerprint=selection.opponent_observation_fingerprint,
     )
 
 

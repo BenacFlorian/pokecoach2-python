@@ -38,6 +38,9 @@ class PhaseContext:
     full_battle_timeout_seconds: float = 300.0
     engine_mode: str = "stub"
     insert_battle: Callable[[BattleRecord, str], str] | None = None
+    insert_battles_batch: Callable[[list[tuple[BattleRecord, str]]], list[str]] | None = (
+        None
+    )
     list_battles: Callable[[], Sequence[BattleRecord]] | None = None
     list_d_battles: Callable[[], Sequence[StoredDBattle]] | None = None
     run_provenance: dict[str, Any] = field(default_factory=dict)

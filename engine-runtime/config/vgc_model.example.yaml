@@ -15,6 +15,7 @@ architecture:
 inference:
   device: auto
   deterministic: true
+  open_team_sheets: true
 
 # Alternative après export Trainer :
 # model_id: bc-tiny-smoke

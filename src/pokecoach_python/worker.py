@@ -21,7 +21,9 @@ logger = logging.getLogger(__name__)
 # Verrou Postgres session : un seul worker par base (évite double claim / heartbeats fantômes).
 _WORKER_SINGLETON_LOCK_KEY = 884_242
 
-HEARTBEAT_INTERVAL = 10
+HEARTBEAT_INTERVAL = 60
+HEARTBEAT_FAILURE_RETRY_SECONDS = 5
+HEARTBEAT_FAILURES_BEFORE_STOP = 24
 POLL_IDLE_SECONDS = 1
 THREAD_JOIN_POLL_SECONDS = 0.25
 # In-flight engine/LLM calls may run until their configured timeout, then teardown.
@@ -48,8 +50,17 @@ def _release_worker_singleton_lock(conn: Connection | None) -> None:
             text("SELECT pg_advisory_unlock(:key)"),
             {"key": _WORKER_SINGLETON_LOCK_KEY},
         )
+    except Exception:
+        logger.warning(
+            "could not release worker singleton lock %s (connection lost?)",
+            _WORKER_SINGLETON_LOCK_KEY,
+            exc_info=True,
+        )
     finally:
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 class WorkerSupervisor:
@@ -89,13 +100,19 @@ class WorkerSupervisor:
         worker_thread = threading.Thread(target=_run, daemon=True)
         worker_thread.start()
         last_beat = time.monotonic()
+        heartbeat_failures = 0
 
         while not done.is_set():
             if self._stop:
                 stop_event.set()
-            if done.wait(timeout=HEARTBEAT_INTERVAL):
+            poll_seconds = (
+                HEARTBEAT_FAILURE_RETRY_SECONDS
+                if heartbeat_failures
+                else HEARTBEAT_INTERVAL
+            )
+            if done.wait(timeout=poll_seconds):
                 break
-            if time.monotonic() - last_beat < HEARTBEAT_INTERVAL:
+            if time.monotonic() - last_beat < poll_seconds:
                 continue
             try:
                 heartbeat_ok = repo.heartbeat(run_id, token)
@@ -103,11 +120,16 @@ class WorkerSupervisor:
                 logger.exception("heartbeat error for run %s", run_id)
                 heartbeat_ok = False
             if not heartbeat_ok:
-                if worker_thread.is_alive():
+                heartbeat_failures += 1
+                if (
+                    heartbeat_failures >= HEARTBEAT_FAILURES_BEFORE_STOP
+                    and worker_thread.is_alive()
+                ):
                     logger.error("heartbeat lost for run %s", run_id)
                     stop_event.set()
                 last_beat = time.monotonic()
                 continue
+            heartbeat_failures = 0
             last_beat = time.monotonic()
 
         while worker_thread.is_alive():
@@ -156,10 +178,20 @@ class WorkerSupervisor:
 
     def _run_poll_loop(self) -> None:
         while not self._stop:
-            expired = self._repo.fail_expired_leases()
+            try:
+                expired = self._repo.fail_expired_leases()
+            except Exception:
+                logger.exception("fail_expired_leases failed (database unavailable?)")
+                time.sleep(POLL_IDLE_SECONDS)
+                continue
             if expired:
                 logger.warning("failed %s runs with expired leases", expired)
-            claim = self._repo.claim_next()
+            try:
+                claim = self._repo.claim_next()
+            except Exception:
+                logger.exception("claim_next failed (database unavailable?)")
+                time.sleep(POLL_IDLE_SECONDS)
+                continue
             if claim is None:
                 time.sleep(POLL_IDLE_SECONDS)
                 continue

@@ -70,7 +70,19 @@ class FixtureRuntime:
         digest = _digest(f"preview:{seed}", our, opp)
         opp_lead = _pick_pair(digest, 0)
         our_lead = _pick_pair(digest, 2)
-        return build_preview(opponent_lead=opp_lead, our_lead=our_lead, engine="fixture-bridge")
+        opp_four = _pick_four(digest, 4)
+        our_four = _pick_four(digest, 10)
+        our_fp = f"sha256-v1:{hashlib.sha256(digest[:16]).hexdigest()}"
+        opp_fp = f"sha256-v1:{hashlib.sha256(digest[16:32]).hexdigest()}"
+        return build_preview(
+            opponent_lead=opp_lead,
+            our_lead=our_lead,
+            engine="fixture-bridge",
+            our_four=our_four,
+            opponent_four=opp_four,
+            our_observation_fingerprint=our_fp,
+            opponent_observation_fingerprint=opp_fp,
+        )
 
     def first_turn(self, payload: dict[str, Any]) -> dict[str, Any]:
         seed = int(payload["seed"])
@@ -214,6 +226,22 @@ def _digest(prefix: str, our: dict[str, Any], opp: dict[str, Any]) -> bytes:
         separators=(",", ":"),
     )
     return hashlib.sha256(blob.encode()).digest()
+
+
+def _pick_four(digest: bytes, offset: int) -> tuple[int, int, int, int]:
+    chosen: list[int] = []
+    for i in range(len(digest)):
+        slot = int(digest[(offset + i) % len(digest)] % 6)
+        if slot not in chosen:
+            chosen.append(slot)
+        if len(chosen) == 4:
+            break
+    for slot in range(6):
+        if slot not in chosen:
+            chosen.append(slot)
+        if len(chosen) == 4:
+            break
+    return (chosen[0], chosen[1], chosen[2], chosen[3])
 
 
 def _pick_pair(digest: bytes, offset: int) -> tuple[int, int]:

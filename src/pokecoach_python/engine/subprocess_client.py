@@ -75,6 +75,10 @@ class VgcSubprocessClient:
             settings.engine_first_turn_timeout_seconds
         )
         env["POKECOACH_ENGINE_MAX_REJECT_PREVIEWS"] = str(settings.engine_max_reject_previews)
+        if settings.showdown_open_team_sheets is not None:
+            env["POKECOACH_SHOWDOWN_OPEN_TEAM_SHEETS"] = (
+                "1" if settings.showdown_open_team_sheets else "0"
+            )
         if os.environ.get("POKECOACH_BRIDGE_FIXTURE") == "1":
             env["POKECOACH_BRIDGE_FIXTURE"] = "1"
         if settings.vgc_model_profile:

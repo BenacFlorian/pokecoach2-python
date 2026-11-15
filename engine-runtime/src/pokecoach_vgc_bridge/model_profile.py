@@ -53,6 +53,7 @@ class ModelArchitecture:
 class InferenceConfig:
     device: str = "auto"
     deterministic: bool = True
+    open_team_sheets: bool = False
 
 
 @dataclass(frozen=True)
@@ -205,9 +206,16 @@ def load_vgc_model_profile(path: Path) -> VgcModelProfile:
     assert checkpoint_path is not None and architecture is not None
 
     inf_raw = raw.get("inference") or {}
+    det_raw = inf_raw.get("deterministic", True)
+    if not isinstance(det_raw, bool):
+        raise ModelProfileError("inference.deterministic must be a boolean")
+    ots_raw = inf_raw.get("open_team_sheets", False)
+    if not isinstance(ots_raw, bool):
+        raise ModelProfileError("inference.open_team_sheets must be a boolean")
     inference = InferenceConfig(
         device=str(inf_raw.get("device", "auto")),
-        deterministic=bool(inf_raw.get("deterministic", True)),
+        deterministic=det_raw,
+        open_team_sheets=ots_raw,
     )
 
     return VgcModelProfile(

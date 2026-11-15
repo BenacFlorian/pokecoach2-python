@@ -23,7 +23,21 @@
       }
     ],
     "selectionRuleVersion": "selection-v1",
-    "limitations": ["Effectifs faibles : interpréter la recommandation avec prudence."]
+    "limitations": ["Effectifs faibles : interpréter la recommandation avec prudence."],
+    "samplingDiagnostics": {
+      "source": "policy-samples",
+      "samplingPolicy": "stochastic-team-preview-v1",
+      "sampleSize": 4,
+      "uniqueFours": 1,
+      "uniqueSelections": 1,
+      "fourFrequencies": [{"ourFourSlots": [0, 1, 4, 5], "count": 4}],
+      "selectionFrequencies": [
+        {
+          "selection": {"ourFourSlots": [0, 1, 4, 5], "ourLeadSlots": [0, 1]},
+          "count": 4
+        }
+      ]
+    }
   },
   "openings": null,
   "refinement": null,

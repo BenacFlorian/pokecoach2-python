@@ -23,6 +23,7 @@ Attendu :
 
 - `completedPhases` contient `A`, `B`, `C`.
 - Onglet **Lead & pick** : quatre, lead, justifications (limitations), premiers tours par lead étudié.
+- Modale **Détails de la sélection** : si le résultat inclut `leadPick.samplingDiagnostics`, fréquences des quatre réellement tirés en phase C (source policy, pas majorité dataset). Anciens runs sans ce champ restent valides.
 - **3 combats terminés par lead** du top 3 (profil smoke).
 - En base : lignes `core.matchup_run_battles` avec `phase='C'` (non exposées GraphQL).
 

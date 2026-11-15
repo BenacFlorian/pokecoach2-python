@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import io
 import zipfile
-from pathlib import Path
 
 from pokecoach_vgc_bridge.checkpoint import verify_checkpoint
-from pokecoach_vgc_bridge.model_profile import ModelProfileError, VgcModelProfile
+from pokecoach_vgc_bridge.model_profile import VgcModelProfile
 from pokecoach_vgc_bridge.vgc_source import prepare_vgc_bench_source
 
 
@@ -30,7 +29,12 @@ def resolve_inference_device(requested: str) -> str:
     return "cpu"
 
 
-def load_policy_from_profile(profile: VgcModelProfile, device_str: str | None = None):
+def load_policy_from_profile(
+    profile: VgcModelProfile,
+    device_str: str | None = None,
+    *,
+    open_team_sheets: bool | None = None,
+):
     """Retourne une ``MaskedActorCriticPolicy`` prête pour l'inférence."""
 
     import os
@@ -39,12 +43,19 @@ def load_policy_from_profile(profile: VgcModelProfile, device_str: str | None = 
     previous = os.getcwd()
     os.chdir(root)
     try:
-        return _load_policy_from_profile_cwd(profile, device_str)
+        return _load_policy_from_profile_cwd(
+            profile, device_str, open_team_sheets=open_team_sheets
+        )
     finally:
         os.chdir(previous)
 
 
-def _load_policy_from_profile_cwd(profile: VgcModelProfile, device_str: str | None = None):
+def _load_policy_from_profile_cwd(
+    profile: VgcModelProfile,
+    device_str: str | None = None,
+    *,
+    open_team_sheets: bool | None = None,
+):
     ckpt = profile.resolved_checkpoint_path
     if not ckpt.is_file():
         raise ModelLoadError(f"checkpoint introuvable: {ckpt}")
@@ -64,14 +75,18 @@ def _load_policy_from_profile_cwd(profile: VgcModelProfile, device_str: str | No
     from stable_baselines3 import PPO
     from vgc_bench.src.env import ShowdownEnv
     from vgc_bench.src.policy import MaskedActorCriticPolicy
-    from vgc_bench.src.utils import format_map, set_global_seed
+    from vgc_bench.src.utils import format_map
 
-    set_global_seed(42)
+    effective_ots = (
+        profile.inference.open_team_sheets
+        if open_team_sheets is None
+        else open_team_sheets
+    )
     kwargs = profile.policy_kwargs()
     env = ShowdownEnv(
         battle_format=format_map["mb"],
         log_level=40,
-        accept_open_team_sheet=True,
+        accept_open_team_sheet=effective_ots,
         start_listening=False,
         choose_on_teampreview=kwargs["choose_on_teampreview"],
     )
@@ -115,6 +130,19 @@ def _load_policy_from_profile_cwd(profile: VgcModelProfile, device_str: str | No
     return policy
 
 
-def attach_policy_to_player(player, profile: VgcModelProfile, device_str: str | None = None) -> None:
-    policy = load_policy_from_profile(profile, device_str)
+def attach_policy_to_player(
+    player,
+    profile: VgcModelProfile,
+    device_str: str | None = None,
+    *,
+    deterministic: bool | None = None,
+    open_team_sheets: bool | None = None,
+) -> None:
+    effective_deterministic = (
+        profile.inference.deterministic if deterministic is None else deterministic
+    )
+    policy = load_policy_from_profile(
+        profile, device_str, open_team_sheets=open_team_sheets
+    )
     player.policy = policy
+    player.deterministic = effective_deterministic

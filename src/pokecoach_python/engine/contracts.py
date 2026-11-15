@@ -43,6 +43,8 @@ class EngineCapabilities:
 class PreviewRecord:
     opponent_lead_slots: tuple[int, int]
     our_lead_slots: tuple[int, int] | None = None
+    our_four_slots: tuple[int, int, int, int] | None = None
+    opponent_four_slots: tuple[int, int, int, int] | None = None
     meta: dict[str, Any] = field(default_factory=dict)
 
 

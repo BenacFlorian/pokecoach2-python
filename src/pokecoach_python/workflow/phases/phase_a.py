@@ -11,6 +11,10 @@ from pokecoach_python.engine.contracts import PreviewRecord, SimulationRequest
 from pokecoach_python.schemas.analysis_result import SimulationResultV2
 from pokecoach_python.workflow.aggregation.leads import aggregate_leads
 from pokecoach_python.workflow.budgets import max_attempts, phase_a_valid_budget
+from pokecoach_python.workflow.db_write_throttle import (
+    PHASE_A_PROGRESS_BATCH,
+    report_progress_batched,
+)
 from pokecoach_python.workflow.types import PhaseContext, PhaseOutput
 
 logger = logging.getLogger(__name__)
@@ -54,7 +58,13 @@ def run_phase_a(context: PhaseContext) -> PhaseOutput:
         try:
             record = context.engine.preview(req)
             valid.append(record)
-            context.report_progress("A", len(valid), budget)
+            report_progress_batched(
+                context.report_progress,
+                "A",
+                len(valid),
+                budget,
+                PHASE_A_PROGRESS_BATCH,
+            )
         except RunExecutionStopped:
             raise
         except ValueError:
